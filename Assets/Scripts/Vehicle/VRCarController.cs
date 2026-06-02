@@ -76,6 +76,13 @@ namespace Vehicle
         private float _brake;
         private bool  _parked = false;   // starts in drive mode — just press W
 
+        /// <summary>
+        /// When true, all player input (keyboard + VR) is ignored and SetThrottle/SetBrake
+        /// calls are blocked. Used by TreeCollisionResponse to seize full control.
+        /// </summary>
+        [HideInInspector]
+        public bool inputLocked = false;
+
         private float _steerAngle;       // current yaw being applied
         private float _wheelRotation;    // visual wheel spin angle
 
@@ -94,7 +101,7 @@ namespace Vehicle
         {
             // ── Keyboard fallback (Editor only) ───────────────────────────────
 #if UNITY_EDITOR
-            if (enableKeyboardFallback)
+            if (enableKeyboardFallback && !inputLocked)
                 ReadKeyboard();
 #endif
 
@@ -210,24 +217,42 @@ namespace Vehicle
 
         // ── Public API ─────────────────────────────────────────────────────────
 
-        /// <summary>Set throttle 0..1.</summary>
+        /// <summary>Set throttle 0..1. No-ops when inputLocked.</summary>
         public void SetThrottle(float value)
         {
+            if (inputLocked) return;
             _throttle = Mathf.Clamp01(value);
             if (_throttle > 0.02f) _parked = false;
         }
 
-        /// <summary>Set brake 0..1.</summary>
-        public void SetBrake(float value) => _brake = Mathf.Clamp01(value);
+        /// <summary>Set brake 0..1. No-ops when inputLocked.</summary>
+        public void SetBrake(float value)
+        {
+            if (inputLocked) return;
+            _brake = Mathf.Clamp01(value);
+        }
 
-        /// <summary>Set steer -1 (left) .. +1 (right).</summary>
-        public void SetSteer(float value) => _steer = Mathf.Clamp(value, -1f, 1f);
+        /// <summary>Set steer -1 (left) .. +1 (right). No-ops when inputLocked.</summary>
+        public void SetSteer(float value)
+        {
+            if (inputLocked) return;
+            _steer = Mathf.Clamp(value, -1f, 1f);
+        }
 
         /// <summary>Engage or release park.</summary>
         public void SetParked(bool parked)
         {
             _parked = parked;
             if (parked) _throttle = 0f;
+        }
+
+        /// <summary>
+        /// Forcibly override the internal speed. Used by TreeCollisionResponse to
+        /// stop the car instantly without waiting for deceleration.
+        /// </summary>
+        public void ForceSetSpeed(float kmh)
+        {
+            _speedKmh = Mathf.Clamp(kmh, 0f, maxSpeedKmh);
         }
 
         // ── Keyboard Fallback (Editor) ─────────────────────────────────────────

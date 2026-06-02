@@ -60,6 +60,17 @@ namespace InfiniteWorld
         [Tooltip("Max tree scale multiplier.")]
         public float treeScaleMax    = 1.4f;
 
+        // ── Tree Physics ──────────────────────────────────────────────
+        [Header("Tree Physics")]
+        [Tooltip("Minimum collision impulse needed to topple a tree.")]
+        public float treeToppleThreshold    = 4f;
+        [Tooltip("Multiplier on the topple impulse force.")]
+        public float treeImpactMultiplier   = 2.5f;
+        [Tooltip("Seconds after toppling before the tree is destroyed.")]
+        public float treeDestroyDelay       = 8f;
+        [Tooltip("Mass (kg) of each tree Rigidbody.")]
+        public float treeMass               = 300f;
+
         // ── Camera ────────────────────────────────────────────────────────────
         [Header("Camera")]
         public float cameraHeight = 2.8f;
@@ -524,9 +535,34 @@ namespace InfiniteWorld
                             new Vector3(tx, ty, tz),
                             Quaternion.Euler(0f, rot, 0f),
                             forestRoot.transform);
-                        tree.name     = "Oak";
-                        tree.isStatic = true;
+                        tree.name = "Oak";
+                        tree.tag  = "Tree";   // needed by TreeCollisionResponse
+                        // NOTE: NOT marked isStatic — physics requires dynamic objects
                         tree.transform.localScale = Vector3.one * scl;
+
+                        // ── Physics setup ──────────────────────────────────
+                        // Add a trunk CapsuleCollider on the root (scaled for this tree)
+                        var capsule = tree.GetComponent<CapsuleCollider>();
+                        if (capsule == null) capsule = tree.AddComponent<CapsuleCollider>();
+                        capsule.direction = 1;                        // Y-axis (vertical)
+                        capsule.radius    = 0.6f;
+                        capsule.height    = 20f;
+                        capsule.center    = new Vector3(0f, 10f, 0f); // centre of trunk
+
+                        // Rigidbody — kinematic until hit
+                        var rb = tree.GetComponent<Rigidbody>();
+                        if (rb == null) rb = tree.AddComponent<Rigidbody>();
+                        rb.mass        = treeMass;
+                        rb.isKinematic = true;   // TreePhysics will activate it
+                        rb.useGravity  = false;
+                        rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+                        // TreePhysics drives the topple behaviour
+                        var tp = tree.AddComponent<TreePhysics>();
+                        tp.toppleThreshold      = treeToppleThreshold;
+                        tp.impactForceMultiplier = treeImpactMultiplier;
+                        tp.destroyDelay         = treeDestroyDelay;
+
                         totalTrees++;
                     }
                 }
@@ -542,9 +578,7 @@ namespace InfiniteWorld
             var cam = Camera.main;
             if (cam == null) return;
 
-            Vector3 start = GetRoadPosition(15f);
-            cam.transform.position = start;
-            cam.transform.rotation = Quaternion.LookRotation(GetRoadTangent(15f), Vector3.up);
+            // Camera initial position/rotation stays where the vehicle is to allow grass start
             cam.farClipPlane  = 3000f;
             cam.nearClipPlane = 0.3f;
 
@@ -559,11 +593,14 @@ namespace InfiniteWorld
             drv.cameraHeight  = cameraHeight;
             drv.terrain       = _terrain;
             drv.worldBuilder  = this;
+
+            // Snapping is now handled smoothly after pressing Spacebar in the Intro sequence
+            // drv.SnapCarToRoadStart();
         }
 
         // ── Utility ──────────────────────────────────────────────────────────
 
-        private float SampleTerrainAt(float wx, float wz)
+        public float SampleTerrainAt(float wx, float wz)
         {
             if (_terrain == null) return 0f;
             var td  = _terrain.terrainData;

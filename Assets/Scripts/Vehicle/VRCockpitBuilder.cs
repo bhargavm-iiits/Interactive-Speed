@@ -47,6 +47,10 @@ namespace Vehicle
         public float scale = 1f;
         [Tooltip("Position of the cockpit root relative to car body.")]
         public Vector3 cockpitOffset = new Vector3(0f, 0.3f, 0.1f);
+        [Tooltip("Additional local rotation offset applied to the real steering wheel model so it faces the driver correctly.")]
+        public Vector3 realWheelRotationOffset = Vector3.zero;
+        [Tooltip("Target visual diameter of the real steering wheel in meters.")]
+        public float realWheelDiameter = 0.36f;
 
         // ── Palette ────────────────────────────────────────────────────────────
         private static readonly Color ColBodyPanel      = new Color(0.12f, 0.12f, 0.14f);  // near black
@@ -78,6 +82,14 @@ namespace Vehicle
         {
             BuildCockpit();
             WireComponents();
+
+            // Ensure StraightLineDriver is enabled so that camera sitting alignment and driving logic execute
+            var driver = FindFirstObjectByType<InfiniteWorld.StraightLineDriver>();
+            if (driver != null)
+            {
+                driver.enabled = true;
+                Debug.Log("[VRCockpitBuilder] Automatically enabled StraightLineDriver script.");
+            }
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -86,23 +98,20 @@ namespace Vehicle
 
         private void BuildCockpit()
         {
-            // Root transform for the whole interior
-            var rootGO = new GameObject("Cockpit_Root");
-            rootGO.transform.SetParent(transform, false);
-            rootGO.transform.localPosition = cockpitOffset;
-            cockpitRoot = rootGO.transform;
+            // We only build the steering wheel as requested (Cockpit_Root and other panels deleted)
+            cockpitRoot = transform;
 
-            BuildCarBody();
-            BuildWindshield();
-            BuildDashboard();
-            BuildSteeringColumn();
+            // BuildCarBody();
+            // BuildWindshield();
+            // BuildDashboard();
+            // BuildSteeringColumn();
             BuildSteeringWheel();
-            BuildPedalBox();
-            BuildDriverSeat();
-            BuildDoorPanels();
-            BuildMirrors();
-            BuildDashboardUI();
-            BuildInteriorLighting();
+            // BuildPedalBox();
+            // BuildDriverSeat();
+            // BuildDoorPanels();
+            // BuildMirrors();
+            // BuildDashboardUI();
+            // BuildInteriorLighting();
         }
 
         // ══════════════════════════════════════════════════════════════════════
@@ -216,8 +225,8 @@ namespace Vehicle
                 col: ColCarbonFibre);
 
             // Gauge pods (two round circles for speedo + RPM)
-            BuildGaugePod("Speedo_Pod", dashRoot.transform, new Vector3(-0.25f, 0f, 0.02f));
-            BuildGaugePod("RPM_Pod",    dashRoot.transform, new Vector3( 0.25f, 0f, 0.02f));
+            BuildGaugePod("Speedo_Pod", dashRoot.transform, new Vector3(-0.47f, 0f, 0.02f));
+            BuildGaugePod("RPM_Pod",    dashRoot.transform, new Vector3(-0.23f, 0f, 0.02f));
         }
 
         private void BuildGaugePod(string name, Transform parent, Vector3 localPos)
@@ -267,14 +276,14 @@ namespace Vehicle
         {
             // Column tube
             var col = CreateCylinder("SteeringColumn", cockpitRoot,
-                pos: new Vector3(-0.25f, -0.08f, 0.5f),
+                pos: new Vector3(-0.35f, -0.08f, 0.5f),
                 radius: 0.022f, height: 0.35f,
                 col: ColBodyPanel);
             col.localRotation = Quaternion.Euler(35f, 0f, 0f);
 
             // Column shroud
             var shroud = CreateBox("ColumnShroud", cockpitRoot,
-                pos: new Vector3(-0.25f, -0.02f, 0.52f),
+                pos: new Vector3(-0.35f, -0.02f, 0.52f),
                 size: new Vector3(0.09f, 0.075f, 0.22f),
                 col: ColBodyPanel);
             shroud.localRotation = Quaternion.Euler(35f, 0f, 0f);
@@ -282,78 +291,142 @@ namespace Vehicle
 
         private void BuildSteeringWheel()
         {
-            // Wheel pivot — this is what the VRSteeringWheel script rotates
-            var pivotGO = new GameObject("SteeringWheel_Pivot");
-            pivotGO.transform.SetParent(cockpitRoot, false);
-            pivotGO.transform.localPosition = new Vector3(-0.25f, 0.08f, 0.44f);
-            pivotGO.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);   // slight downward tilt
-            steeringWheelTransform = pivotGO.transform;
-
-            // ── D-Shape Rim (top arc) ──────────────────────────────────────────
-            float rimRadius    = 0.175f;
-            int   rimSegments  = 14;          // segments for top ~280° arc
-            float arcStartDeg  = -140f;       // start (bottom-left of arc)
-            float arcEndDeg    =  140f;       // end (bottom-right)
-            float arcRange     = arcEndDeg - arcStartDeg;
-
-            var rimRoot = new GameObject("Rim");
-            rimRoot.transform.SetParent(pivotGO.transform, false);
-
-            for (int i = 0; i < rimSegments; i++)
+            // Delete any duplicate steering wheel objects pre-existing in the VRCar hierarchy in the editor
+            // to avoid duplicates in Play Mode
+            var toDestroy = new System.Collections.Generic.List<GameObject>();
+            foreach (Transform child in transform)
             {
-                float a0 = arcStartDeg + (arcRange / rimSegments) * i;
-                float a1 = arcStartDeg + (arcRange / rimSegments) * (i + 1);
-                float aMid = (a0 + a1) * 0.5f * Mathf.Deg2Rad;
-
-                Vector3 segPos = new Vector3(Mathf.Sin(aMid) * rimRadius, Mathf.Cos(aMid) * rimRadius, 0f);
-                float segAngle = -(a0 + a1) * 0.5f;
-
-                var seg = CreateCylinder($"RimSeg_{i}", rimRoot.transform,
-                    pos: segPos,
-                    radius: 0.016f,
-                    height: rimRadius * 2f * Mathf.Sin(arcRange * Mathf.Deg2Rad / rimSegments / 2f) * 2.1f,
-                    col: i % 2 == 0 ? ColCarbonFibre : ColLeather);
-                seg.localRotation = Quaternion.Euler(0f, 0f, segAngle + 90f);
+                if (child.name.StartsWith("Meshy_AI_Three_Spoke_Sport_Ste") || child.name.Contains("StearingWheel"))
+                {
+                    toDestroy.Add(child.gameObject);
+                }
+            }
+            foreach (var go in toDestroy)
+            {
+                DestroyImmediate(go);
             }
 
-            // ── Flat Bottom Bar ────────────────────────────────────────────────
-            float bottomY = Mathf.Cos(arcEndDeg * Mathf.Deg2Rad) * rimRadius;
-            float bottomX = Mathf.Sin(arcEndDeg * Mathf.Deg2Rad) * rimRadius;
+            // Wheel pivot — this is what the VRSteeringWheel script rotates
+            var pivotGO = new GameObject("SteeringWheel_Pivot");
+            pivotGO.transform.SetParent(transform, false);
+            pivotGO.transform.localPosition = new Vector3(3f, 1.1f, 8f);
+            pivotGO.transform.localRotation = Quaternion.Euler(-90f, 0f, -180f);
+            steeringWheelTransform = pivotGO.transform;
 
-            CreateCylinder("RimBottom", pivotGO.transform,
-                pos: new Vector3(0f, bottomY, 0f),
-                radius: 0.016f,
-                height: bottomX * 2f,
-                col: ColLeather).localRotation = Quaternion.Euler(0f, 0f, 90f);
+            bool assetLoaded = false;
 
-            // ── Spokes ────────────────────────────────────────────────────────
-            // Left spoke
-            BuildSpoke("Spoke_Left",  pivotGO.transform, -0.09f, rimRadius);
-            // Right spoke
-            BuildSpoke("Spoke_Right", pivotGO.transform,  0.09f, rimRadius);
+#if UNITY_EDITOR
+            // Try loading high-quality steering wheel asset
+            GameObject fbxModel = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture.fbx");
+            if (fbxModel != null)
+            {
+                // Create a container under pivot
+                GameObject container = new GameObject("SteeringWheel_VisualContainer");
+                container.transform.SetParent(pivotGO.transform, false);
+                container.transform.localPosition = Vector3.zero;
+                container.transform.localRotation = Quaternion.identity;
 
-            // ── Hub / Airbag ───────────────────────────────────────────────────
-            // Center hub box
-            CreateBox("Hub", pivotGO.transform,
-                pos: new Vector3(0f, 0f, 0f),
-                size: new Vector3(0.14f, 0.09f, 0.025f),
-                col: ColLeather);
+                // Instantiate FBX under container
+                GameObject fbxInstance = Instantiate(fbxModel, container.transform);
+                fbxInstance.transform.localPosition = Vector3.zero;
+                fbxInstance.transform.localRotation = Quaternion.identity;
+                fbxInstance.transform.localScale = new Vector3(50f, 50f, 50f); // Lock to your verified inspector scale!
 
-            // Chrome accent on hub
-            CreateBox("HubAccent", pivotGO.transform,
-                pos: new Vector3(0f, 0f, -0.013f),
-                size: new Vector3(0.10f, 0.05f, 0.005f),
-                col: ColChrome);
+                // Disable and destroy any Animator component that would lock local rotations
+                var animator = fbxInstance.GetComponent<Animator>();
+                if (animator != null)
+                {
+                    animator.enabled = false;
+                    DestroyImmediate(animator);
+                }
 
-            // Chrome buttons left / right of hub (control clusters from reference)
-            BuildControlCluster("Cluster_Left",  pivotGO.transform, new Vector3(-0.085f, 0.01f, -0.01f));
-            BuildControlCluster("Cluster_Right", pivotGO.transform, new Vector3( 0.085f, 0.01f, -0.01f));
+                // Check for renderers and apply materials
+                Renderer[] renderers = fbxInstance.GetComponentsInChildren<Renderer>();
+                if (renderers.Length > 0)
+                {
+                    Material wheelMat = null;
+#if UNITY_EDITOR
+                    wheelMat = UnityEditor.AssetDatabase.LoadAssetAtPath<Material>("Assets/ALP_Assets/StearingWheel/Black.mat");
+#endif
+                    if (wheelMat == null)
+                    {
+                        wheelMat = CreateRealSteeringWheelMaterial();
+                    }
 
-            // Bottom trim piece (chrome bar at flat bottom center)
-            CreateBox("BottomTrim", pivotGO.transform,
-                pos: new Vector3(0f, bottomY - 0.005f, 0f),
-                size: new Vector3(0.08f, 0.01f, 0.018f),
-                col: ColChrome);
+                    foreach (var r in renderers)
+                    {
+                        r.sharedMaterial = wheelMat;
+                    }
+                }
+                assetLoaded = true;
+                Debug.Log("[VRCockpitBuilder] Successfully loaded real steering wheel asset at locked scale (50) and facing the driver!");
+            }
+#endif
+
+            if (!assetLoaded)
+            {
+                // Fallback to original procedural D-Shape Rim
+                float rimRadius    = 0.175f;
+                int   rimSegments  = 14;          // segments for top ~280° arc
+                float arcStartDeg  = -140f;       // start (bottom-left of arc)
+                float arcEndDeg    =  140f;       // end (bottom-right)
+                float arcRange     = arcEndDeg - arcStartDeg;
+
+                var rimRoot = new GameObject("Rim");
+                rimRoot.transform.SetParent(pivotGO.transform, false);
+
+                for (int i = 0; i < rimSegments; i++)
+                {
+                    float a0 = arcStartDeg + (arcRange / rimSegments) * i;
+                    float a1 = arcStartDeg + (arcRange / rimSegments) * (i + 1);
+                    float aMid = (a0 + a1) * 0.5f * Mathf.Deg2Rad;
+
+                    Vector3 segPos = new Vector3(Mathf.Sin(aMid) * rimRadius, Mathf.Cos(aMid) * rimRadius, 0f);
+                    float segAngle = -(a0 + a1) * 0.5f;
+
+                    var seg = CreateCylinder($"RimSeg_{i}", rimRoot.transform,
+                        pos: segPos,
+                        radius: 0.016f,
+                        height: rimRadius * 2f * Mathf.Sin(arcRange * Mathf.Deg2Rad / rimSegments / 2f) * 2.1f,
+                        col: i % 2 == 0 ? ColCarbonFibre : ColLeather);
+                    seg.localRotation = Quaternion.Euler(0f, 0f, segAngle + 90f);
+                }
+
+                // ── Flat Bottom Bar ────────────────────────────────────────────────
+                float bottomY = Mathf.Cos(arcEndDeg * Mathf.Deg2Rad) * rimRadius;
+                float bottomX = Mathf.Sin(arcEndDeg * Mathf.Deg2Rad) * rimRadius;
+
+                CreateCylinder("RimBottom", pivotGO.transform,
+                    pos: new Vector3(0f, bottomY, 0f),
+                    radius: 0.016f,
+                    height: bottomX * 2f,
+                    col: ColLeather).localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+                // ── Spokes ────────────────────────────────────────────────────────
+                BuildSpoke("Spoke_Left",  pivotGO.transform, -0.09f, rimRadius);
+                BuildSpoke("Spoke_Right", pivotGO.transform,  0.09f, rimRadius);
+
+                // ── Hub / Airbag ───────────────────────────────────────────────────
+                CreateBox("Hub", pivotGO.transform,
+                    pos: new Vector3(0f, 0f, 0f),
+                    size: new Vector3(0.14f, 0.09f, 0.025f),
+                    col: ColLeather);
+
+                CreateBox("HubAccent", pivotGO.transform,
+                    pos: new Vector3(0f, 0f, -0.013f),
+                    size: new Vector3(0.10f, 0.05f, 0.005f),
+                    col: ColChrome);
+
+                BuildControlCluster("Cluster_Left",  pivotGO.transform, new Vector3(-0.085f, 0.01f, -0.01f));
+                BuildControlCluster("Cluster_Right", pivotGO.transform, new Vector3( 0.085f, 0.01f, -0.01f));
+
+                CreateBox("BottomTrim", pivotGO.transform,
+                    pos: new Vector3(0f, bottomY - 0.005f, 0f),
+                    size: new Vector3(0.08f, 0.01f, 0.018f),
+                    col: ColChrome);
+                
+                Debug.Log("[VRCockpitBuilder] Custom steering wheel asset not found or not in editor; fell back to procedural wheel.");
+            }
         }
 
         private void BuildSpoke(string name, Transform parent, float xOffset, float rimRadius)
@@ -397,14 +470,14 @@ namespace Vehicle
         {
             // Pedal floor plate
             CreateBox("PedalFloor", cockpitRoot,
-                pos: new Vector3(-0.25f, -0.52f, 0.58f),
+                pos: new Vector3(-0.35f, -0.52f, 0.58f),
                 size: new Vector3(0.35f, 0.02f, 0.32f),
                 col: ColBodyPanel);
 
             // Brake pedal
-            brakePedal = BuildPedal("BrakePedal", new Vector3(-0.16f, -0.42f, 0.62f));
+            brakePedal = BuildPedal("BrakePedal", new Vector3(-0.26f, -0.42f, 0.62f));
             // Accelerator pedal
-            acceleratorPedal = BuildPedal("AccelPedal", new Vector3(-0.30f, -0.43f, 0.58f));
+            acceleratorPedal = BuildPedal("AccelPedal", new Vector3(-0.40f, -0.43f, 0.58f));
         }
 
         private Transform BuildPedal(string name, Vector3 localPos)
@@ -851,5 +924,58 @@ namespace Vehicle
             mat.color = col;
             mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         }
+
+#if UNITY_EDITOR
+        private static Bounds GetLocalBounds(Transform targetLocalSpace, Renderer renderer)
+        {
+            Bounds worldBounds = renderer.bounds;
+            Vector3 localMin = targetLocalSpace.InverseTransformPoint(worldBounds.min);
+            Vector3 localMax = targetLocalSpace.InverseTransformPoint(worldBounds.max);
+            
+            Bounds localBounds = new Bounds(targetLocalSpace.InverseTransformPoint(worldBounds.center), Vector3.zero);
+            localBounds.Encapsulate(localMin);
+            localBounds.Encapsulate(localMax);
+            return localBounds;
+        }
+
+        private static Material CreateRealSteeringWheelMaterial()
+        {
+            Shader litShader = Shader.Find("Universal Render Pipeline/Lit");
+            if (litShader == null) litShader = Shader.Find("Standard");
+            Material mat = new Material(litShader);
+
+            Texture2D baseTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture.png");
+            Texture2D normalTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture_normal.png");
+            Texture2D metallicTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture_metallic.png");
+            Texture2D roughnessTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture_roughness.png");
+            Texture2D emissionTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/ALP_Assets/StearingWheel/Meshy_AI_Three_Spoke_Sport_Ste_0602143311_texture_emission.png");
+
+            if (baseTex != null)
+            {
+                mat.SetTexture("_BaseMap", baseTex);
+                mat.SetTexture("_MainTex", baseTex);
+            }
+            if (normalTex != null)
+            {
+                mat.SetTexture("_BumpMap", normalTex);
+                mat.EnableKeyword("_NORMALMAP");
+            }
+            if (metallicTex != null)
+            {
+                mat.SetTexture("_MetallicGlossMap", metallicTex);
+                mat.EnableKeyword("_METALLICGLOSSMAP");
+                mat.SetFloat("_Metallic", 1.0f);
+            }
+            if (emissionTex != null)
+            {
+                mat.SetTexture("_EmissionMap", emissionTex);
+                mat.SetColor("_EmissionColor", Color.white);
+                mat.EnableKeyword("_EMISSION");
+            }
+            mat.SetFloat("_Smoothness", 0.5f);
+
+            return mat;
+        }
+#endif
     }
 }

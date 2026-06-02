@@ -54,6 +54,9 @@ namespace Vehicle
 
         private void Awake()
         {
+            // Force seat offset directly behind the steering wheel coordinates (3, 1.1, 8) in absolute local camera position:
+            driverSeatOffset = new Vector3(0.22587f, 1.89f, 4.69f);
+
             _noiseOffsetX = Random.Range(0f, 100f);
             _noiseOffsetY = Random.Range(0f, 100f);
             _noiseOffsetZ = Random.Range(0f, 100f);
