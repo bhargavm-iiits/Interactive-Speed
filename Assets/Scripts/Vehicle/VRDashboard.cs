@@ -48,26 +48,87 @@ namespace Vehicle
         private float _displaySpeed;
         private float _displayRPM;
 
+        private InfiniteWorld.StraightLineDriver _driver;
+        private bool _hasDriver = false;
+
         private void Awake()
         {
             if (car == null)          car          = GetComponentInParent<VRCarController>();
             if (transmission == null) transmission = GetComponentInParent<VRAutomaticTransmission>();
+            
+            _driver = GetComponentInParent<InfiniteWorld.StraightLineDriver>();
+            if (_driver == null)
+            {
+                _driver = FindFirstObjectByType<InfiniteWorld.StraightLineDriver>();
+            }
+            _hasDriver = (_driver != null);
+
+            speedGaugeMax = 30f; // Force max dial range to 30 m/s programmatically
+        }
+
+        private void Start()
+        {
+            speedGaugeMax = 30f; // Force max dial range to 30 m/s programmatically
         }
 
         private void Update()
         {
-            if (car == null) return;
+            float speedMs = 0f;
+            float rpm = 800f;
+            int gear = 1;
 
-            float speed = car.SpeedKmh;
-            float rpm   = car.CurrentRPM;
+            if (_hasDriver)
+            {
+                float speedKmh = _driver.SpeedKmh;
+                speedMs = speedKmh / 3.6f;
+
+                // Synthesize gear
+                if (_driver.IsReverse)
+                {
+                    gear = 1;
+                }
+                else if (speedKmh < 0.5f)
+                {
+                    gear = 1;
+                }
+                else
+                {
+                    gear = Mathf.Clamp(Mathf.FloorToInt(speedKmh / 22f) + 1, 1, 6);
+                }
+
+                // Synthesize RPM
+                float minSpeedForGear = (gear - 1) * 22f;
+                float maxSpeedForGear = gear * 22f;
+                float speedInGear = speedKmh - minSpeedForGear;
+                float gearSpeedRange = maxSpeedForGear - minSpeedForGear;
+                
+                float speedPercentInGear = Mathf.Clamp01(speedInGear / gearSpeedRange);
+                float minRpm = (gear == 1) ? 800f : 2000f;
+                rpm = Mathf.Lerp(minRpm, 5800f, speedPercentInGear);
+
+                if (_driver.Throttle > 0.01f)
+                {
+                    rpm = Mathf.Lerp(rpm, 6500f, _driver.Throttle * 0.25f);
+                }
+            }
+            else if (car != null)
+            {
+                speedMs = car.SpeedKmh / 3.6f;
+                rpm = car.CurrentRPM;
+                gear = car.CurrentGear;
+            }
+            else
+            {
+                return;
+            }
 
             // Smooth display values
-            _displaySpeed = Mathf.Lerp(_displaySpeed, speed, Time.deltaTime * 8f);
-            _displayRPM   = Mathf.Lerp(_displayRPM,   rpm,   Time.deltaTime * 6f);
+            _displaySpeed = Mathf.Lerp(_displaySpeed, speedMs, Time.deltaTime * 8f);
+            _displayRPM   = Mathf.Lerp(_displayRPM,   rpm,     Time.deltaTime * 6f);
 
             UpdateSpeedometer(_displaySpeed);
             UpdateRPMMeter(_displayRPM);
-            UpdateTexts();
+            UpdateTexts(gear);
         }
 
         private void UpdateSpeedometer(float speed)
@@ -86,23 +147,40 @@ namespace Vehicle
             rpmNeedle.localRotation = Quaternion.Euler(0f, 0f, angle);
         }
 
-        private void UpdateTexts()
+        private void UpdateTexts(int gear)
         {
             // Digital speed readout
             if (speedText != null)
                 speedText.text = $"{_displaySpeed:F0}";
 
-            // Gear display — always in Drive; show gear 1–6
-            if (gearText != null && transmission != null)
+            // Gear display
+            if (gearText != null)
             {
-                gearText.text  = car.CurrentGear.ToString();
+                if (_hasDriver)
+                {
+                    if (_driver.IsReverse)
+                        gearText.text = "R";
+                    else if (_driver.SpeedKmh < 0.5f)
+                        gearText.text = "N";
+                    else
+                        gearText.text = gear.ToString();
+                }
+                else if (car != null)
+                {
+                    gearText.text = gear.ToString();
+                }
                 gearText.color = gearHighlightColor;
             }
 
-            // Mode indicator always shows D
+            // Mode indicator
             if (modeText != null)
             {
-                modeText.text  = "D";
+                if (_hasDriver && _driver.IsReverse)
+                    modeText.text = "R";
+                else if (_hasDriver && _driver.SpeedKmh < 0.5f)
+                    modeText.text = "N";
+                else
+                    modeText.text = "D";
                 modeText.color = gearHighlightColor;
             }
         }

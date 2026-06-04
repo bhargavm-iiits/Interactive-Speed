@@ -49,7 +49,7 @@ namespace InfiniteWorld
         public float acceleration      = 18f;    // km/h per second
         public float brakeDecel        = 50f;
         public float rollOff           = 8f;
-        public float maxSpeedKmh       = 130f;
+        public float maxSpeedKmh       = 100f;
         public float reverseMaxKmh     = 30f;
 
         [Header("Mouse Look")]
@@ -68,6 +68,10 @@ namespace InfiniteWorld
         public bool Paused { get => _paused; set => _paused = value; }
         public float? automaticSpeedKmh;
         public Transform Car => _car;
+
+        public float Throttle => _throttle;
+        public float BrakeInput => _brakeInput;
+        public bool IsReverse => _reverse;
 
         // ── Private state ─────────────────────────────────────────────────────
         private Transform _car;
@@ -124,6 +128,13 @@ namespace InfiniteWorld
         private GUIStyle _posStyle;
         private GUIStyle _posLabelStyle;
         private Texture2D _gearBgTex;
+        private Texture2D _speedometerFaceTex;
+        private Texture2D _circleBadgeTex;
+        private Texture2D _hudPlateTex;
+        private Texture2D _pedalBgTex;
+        private Texture2D _pedalFillBrakeTex;
+        private Texture2D _pedalFillAccelTex;
+        private Rect _pauseButtonRect = new Rect(25, 25, 45, 45);
         private bool _stylesInitialized;
 
         // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -367,6 +378,17 @@ namespace InfiniteWorld
                 if (kb.rKey.wasPressedThisFrame)
                     _reverse = !_reverse;
 
+                // Speed adjustment keyboard fallbacks (2 = 5 m/s, 3 = 10 m/s, 4 = 12 m/s, 5 = 15 m/s, 6 = 17 m/s, 7 = 20 m/s, 8 = 22 m/s, 9 = 25 m/s, 0 = 30 m/s)
+                if (kb.digit2Key.wasPressedThisFrame) automaticSpeedKmh = 18f;
+                if (kb.digit3Key.wasPressedThisFrame) automaticSpeedKmh = 36f;
+                if (kb.digit4Key.wasPressedThisFrame) automaticSpeedKmh = 43.2f;
+                if (kb.digit5Key.wasPressedThisFrame) automaticSpeedKmh = 54f;
+                if (kb.digit6Key.wasPressedThisFrame) automaticSpeedKmh = 61.2f;
+                if (kb.digit7Key.wasPressedThisFrame) automaticSpeedKmh = 72f;
+                if (kb.digit8Key.wasPressedThisFrame) automaticSpeedKmh = 79.2f;
+                if (kb.digit9Key.wasPressedThisFrame) automaticSpeedKmh = 90f;
+                if (kb.digit0Key.wasPressedThisFrame) automaticSpeedKmh = 108f;
+
                 // Pause (ignored during intro splash screen to allow Spacebar to align vehicle)
                 if (kb.spaceKey.wasPressedThisFrame)
                 {
@@ -424,6 +446,16 @@ namespace InfiniteWorld
                 if (Input.GetKeyDown(KeyCode.R))
                     _reverse = !_reverse;
 
+                if (Input.GetKeyDown(KeyCode.Alpha2)) automaticSpeedKmh = 18f;
+                if (Input.GetKeyDown(KeyCode.Alpha3)) automaticSpeedKmh = 36f;
+                if (Input.GetKeyDown(KeyCode.Alpha4)) automaticSpeedKmh = 43.2f;
+                if (Input.GetKeyDown(KeyCode.Alpha5)) automaticSpeedKmh = 54f;
+                if (Input.GetKeyDown(KeyCode.Alpha6)) automaticSpeedKmh = 61.2f;
+                if (Input.GetKeyDown(KeyCode.Alpha7)) automaticSpeedKmh = 72f;
+                if (Input.GetKeyDown(KeyCode.Alpha8)) automaticSpeedKmh = 79.2f;
+                if (Input.GetKeyDown(KeyCode.Alpha9)) automaticSpeedKmh = 90f;
+                if (Input.GetKeyDown(KeyCode.Alpha0)) automaticSpeedKmh = 108f;
+
                 if (Input.GetKeyDown(KeyCode.Space))
                 {
                     if (SpeedLessonManager.Instance == null || SpeedLessonManager.Instance.currentState != SpeedLessonManager.LessonState.IntroSplash)
@@ -450,6 +482,11 @@ namespace InfiniteWorld
             // ── Speed update ──────────────────────────────────────────────────
             float maxKmh = _reverse ? reverseMaxKmh : maxSpeedKmh;
 
+            if (automaticSpeedKmh.HasValue && (_throttle > 0.05f || _brakeInput > 0.05f))
+            {
+                automaticSpeedKmh = null;
+            }
+
             if (automaticSpeedKmh.HasValue)
             {
                 _speedKmh = Mathf.MoveTowards(_speedKmh, automaticSpeedKmh.Value, acceleration * 2f * dt);
@@ -457,7 +494,13 @@ namespace InfiniteWorld
             else
             {
                 if (_throttle > 0.01f)
+                {
+                    if (_speedKmh < 1f)
+                    {
+                        _speedKmh = 30f;
+                    }
                     _speedKmh += _throttle * acceleration * dt;
+                }
                 else if (_brakeInput > 0.01f)
                     _speedKmh -= _brakeInput * brakeDecel * dt;
                 else
@@ -788,6 +831,129 @@ namespace InfiniteWorld
             return tex;
         }
 
+        private Texture2D CreateSpeedometerFaceTexture(int size)
+        {
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            float center = size / 2f;
+            float outerRadius = size * 0.46f;
+            float innerRadius = size * 0.38f;
+            float ringRadius = size * 0.25f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x - center;
+                    float dy = y - center;
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    Color col = Color.clear;
+
+                    // Center ring (purple/blue gradient)
+                    if (dist >= ringRadius - 1.5f && dist <= ringRadius + 1.5f)
+                    {
+                        float angleRad = Mathf.Atan2(dy, dx);
+                        float t = (angleRad + Mathf.PI) / (2f * Mathf.PI);
+                        col = Color.Lerp(new Color(0.2f, 0.4f, 1f, 0.9f), new Color(0.8f, 0.2f, 1f, 0.9f), t);
+                    }
+                    // Speed dial ticks
+                    else if (dist >= innerRadius && dist <= outerRadius)
+                    {
+                        float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                        if (angle < 0) angle += 360f;
+
+                        // Dial arc starting at 45 to 315 deg (270 degrees sweep)
+                        if (angle >= 45f && angle <= 315f)
+                        {
+                            float modulo = angle % 4.5f;
+                            if (modulo < 0.8f || modulo > 3.7f)
+                            {
+                                col = new Color(0.15f, 0.55f, 1f, 0.9f); // Neon blue-cyan ticks
+                            }
+                        }
+                    }
+                    // Outer border arc
+                    else if (dist >= outerRadius + 2f && dist <= outerRadius + 5f)
+                    {
+                        float angle = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                        if (angle < 0) angle += 360f;
+
+                        if (angle >= 40f && angle <= 320f)
+                        {
+                            col = new Color(0.5f, 0.5f, 0.5f, 0.75f); // Gray gauge frame
+                        }
+                    }
+
+                    tex.SetPixel(x, y, col);
+                }
+            }
+            tex.Apply();
+            return tex;
+        }
+
+        private Texture2D CreateCircleTexture(int size, Color col)
+        {
+            Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            float center = size / 2f;
+            float radius = size * 0.46f;
+            float border = size * 0.40f;
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x - center;
+                    float dy = y - center;
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy);
+
+                    Color pixelCol = Color.clear;
+                    if (dist <= border)
+                    {
+                        pixelCol = col;
+                    }
+                    else if (dist <= radius)
+                    {
+                        pixelCol = new Color(col.r * 0.8f, col.g * 0.8f, col.b * 0.8f, 1f);
+                    }
+
+                    tex.SetPixel(x, y, pixelCol);
+                }
+            }
+            tex.Apply();
+            return tex;
+        }
+
+        private void DrawHUDPlate(Rect rect, string value, string icon)
+        {
+            // Draw background plate
+            GUI.DrawTexture(rect, _hudPlateTex);
+
+            // Draw circular badge on the right
+            float badgeSize = rect.height - 6f;
+            Rect badgeRect = new Rect(rect.xMax - badgeSize - 3f, rect.y + 3f, badgeSize, badgeSize);
+            GUI.DrawTexture(badgeRect, _circleBadgeTex);
+
+            // Draw icon inside badge
+            var iconStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = Color.black }
+            };
+            GUI.Label(badgeRect, icon, iconStyle);
+
+            // Draw value text on the left
+            var valStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16,
+                fontStyle = FontStyle.BoldAndItalic,
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(1f, 0.78f, 0.05f, 1f) }
+            };
+            Rect textRect = new Rect(rect.x + 10f, rect.y, rect.width - badgeSize - 20f, rect.height);
+            GUI.Label(textRect, value, valStyle);
+        }
+
         private void InitializeHUDStyles()
         {
             if (_stylesInitialized) return;
@@ -863,6 +1029,24 @@ namespace InfiniteWorld
                 }
             };
 
+            if (_speedometerFaceTex == null)
+                _speedometerFaceTex = CreateSpeedometerFaceTexture(240);
+
+            if (_circleBadgeTex == null)
+                _circleBadgeTex = CreateCircleTexture(32, new Color(0.9f, 0.9f, 0.9f, 0.95f));
+
+            if (_hudPlateTex == null)
+                _hudPlateTex = CreateColorTexture(new Color(0.05f, 0.05f, 0.05f, 0.65f));
+
+            if (_pedalBgTex == null)
+                _pedalBgTex = CreateColorTexture(new Color(0.12f, 0.12f, 0.12f, 0.8f));
+
+            if (_pedalFillBrakeTex == null)
+                _pedalFillBrakeTex = CreateColorTexture(new Color(0.85f, 0.15f, 0.15f, 0.9f));
+
+            if (_pedalFillAccelTex == null)
+                _pedalFillAccelTex = CreateColorTexture(new Color(0.15f, 0.85f, 0.15f, 0.9f));
+
             _stylesInitialized = true;
         }
 
@@ -870,15 +1054,24 @@ namespace InfiniteWorld
         {
             InitializeHUDStyles();
 
+            bool showTelemetry = true;
+            bool showTopRightStats = true;
+
+            if (SpeedLessonManager.Instance != null)
+            {
+                var state = SpeedLessonManager.Instance.currentState;
+                showTelemetry = (state == SpeedLessonManager.LessonState.MissionActive || state == SpeedLessonManager.LessonState.Completed);
+                showTopRightStats = (state != SpeedLessonManager.LessonState.IntroSplash);
+            }
+
             // Calculate progress percent
             float pct = Mathf.Clamp01(_z / endZ) * 100f;
 
-            // Format Timer: minutes:seconds.milliseconds
+            // Format Timer: minutes:seconds
             float elapsed = Time.timeSinceLevelLoad;
             int mins = Mathf.FloorToInt(elapsed / 60f);
             int secs = Mathf.FloorToInt(elapsed % 60f);
-            int ms = Mathf.FloorToInt((elapsed * 1000f) % 1000f);
-            string timeStr = string.Format("{0:00}:{1:00}.{2:000}", mins, secs, ms);
+            string timeStr = string.Format("{0:00}:{1:00}", mins, secs);
 
             // Determine gear and state
             string gearStr = "1";
@@ -895,46 +1088,192 @@ namespace InfiniteWorld
                                : _paused ? "  PAUSED"
                                : "";
 
-            // 1. Progress Display (Top-Left)
-            GUI.Label(new Rect(25, 25, 120, 50), $"{pct:F0}%", _progressStyle);
-            GUI.Label(new Rect(145, 30, 150, 30), "PROGRESS", _progressLabelStyle);
-            GUI.Label(new Rect(25, 75, 300, 30), $"TIME   {timeStr}", _timeStyle);
-
-            // 2. Position Display (Top-Right)
-            GUI.Label(new Rect(Screen.width - 275, 30, 120, 30), "POSITION", _posLabelStyle);
-            GUI.Label(new Rect(Screen.width - 145, 25, 120, 50), "1/1", _posStyle);
-
-            // 3. Speedometer (Bottom-Right)
-            // Draw gear badge
-            GUI.Label(new Rect(Screen.width - 255, Screen.height - 115, 48, 48), gearStr, _gearStyle);
-
-            // Draw speed digits (increased Rect size from 150x95 to 150x120 and added clipping = TextClipping.Overflow to prevent clipping)
-            GUI.Label(new Rect(Screen.width - 200, Screen.height - 160, 150, 120), $"{Mathf.RoundToInt(_speedKmh):000}", _speedStyle);
-
-            // Draw speed label (with impact state if active)
-            string speedLabel = "KM/H";
-            if (!string.IsNullOrEmpty(impactState))
+            // 1. Pause Button (Top-Left)
+            if (showTelemetry)
             {
-                speedLabel = $"KM/H <color=#FF4444>{impactState}</color>";
+                GUI.Box(_pauseButtonRect, "", _gearStyle);
+                var pauseIconStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 22,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = Color.white }
+                };
+                GUI.Label(_pauseButtonRect, "||", pauseIconStyle);
+
+                if (Event.current.type == EventType.MouseDown && _pauseButtonRect.Contains(Event.current.mousePosition))
+                {
+                    if (SpeedLessonManager.Instance == null || SpeedLessonManager.Instance.currentState != SpeedLessonManager.LessonState.IntroSplash)
+                    {
+                        _paused = !_paused;
+                    }
+                    Event.current.Use();
+                }
             }
-            GUI.Label(new Rect(Screen.width - 200, Screen.height - 58, 150, 25), speedLabel, _speedLabelStyle);
 
-            // 4. Subtle driving controls helper (Bottom-Left)
-            var helperStyle = new GUIStyle(GUI.skin.label)
+            float speedMsVal = _speedKmh / 3.6f;
+
+            // 2. Stats Display Plates (Top-Right)
+            if (showTopRightStats)
             {
-                fontSize = 12,
-                fontStyle = FontStyle.Normal,
-                normal = { textColor = new Color(0.7f, 0.7f, 0.7f, 0.6f) }
-            };
-            GUI.Label(new Rect(25, Screen.height - 35, 600, 25), "[W/S] DRIVE  [A/D] STEER  [R] REVERSE  [SPACE] PAUSE  [LMB] RAYCAST POINTER", helperStyle);
+                int scoreVal = 0;
+                if (SpeedLessonManager.Instance != null)
+                {
+                    scoreVal = SpeedLessonManager.Instance.TotalScore;
+                }
+
+                float startY = 25f;
+                float panelWidth = 190f;
+                float panelHeight = 35f;
+                float spacing = 8f;
+                float startX = Screen.width - panelWidth - 25f;
+
+                // Row 1: Score
+                Rect scoreRect = new Rect(startX, startY, panelWidth, panelHeight);
+                DrawHUDPlate(scoreRect, $"{scoreVal} PTS", "🏆");
+
+                // Row 2: Distance
+                Rect distRect = new Rect(startX, startY + panelHeight + spacing, panelWidth, panelHeight);
+                DrawHUDPlate(distRect, $"{Mathf.RoundToInt(_z)} M ({pct:F0}%)", "🏁");
+
+                // Row 3: Time
+                Rect timeRect = new Rect(startX, startY + (panelHeight + spacing) * 2f, panelWidth, panelHeight);
+                DrawHUDPlate(timeRect, timeStr, "⏱️");
+
+                // Row 4: Speed
+                Rect speedRect = new Rect(startX, startY + (panelHeight + spacing) * 3f, panelWidth, panelHeight);
+                DrawHUDPlate(speedRect, $"{speedMsVal:F1} M/S", "⚡");
+            }
+
+            if (showTelemetry)
+            {
+                // 3. Neon Circular Dial Speedometer (Bottom-Center)
+                Rect faceRect = new Rect((Screen.width - 240f) / 2f, Screen.height - 265f, 240f, 240f);
+                GUI.DrawTexture(faceRect, _speedometerFaceTex);
+
+                // Rotating Needle
+                Vector2 speedoCenter = faceRect.center;
+                float maxSpeedMs = 120f / 3.6f; // Max speed range 120 km/h (33.33 m/s)
+                float tSpeed = Mathf.Clamp01(speedMsVal / maxSpeedMs);
+                float needleAngle = Mathf.Lerp(-135f, 135f, tSpeed);
+
+                // Draw dial number labels (0 to 120 at 45 degree intervals)
+                var dialLabelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 14,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = new Color(0.7f, 0.9f, 1f, 0.85f) }
+                };
+
+                float[] dialValues = { 0, 20, 40, 60, 80, 100, 120 };
+                float labelRadius = 96f; // Positioned perfectly inside ticks
+
+                for (int i = 0; i < dialValues.Length; i++)
+                {
+                    float angle = -135f + (i * 45f);
+                    float angleRad = (angle - 90f) * Mathf.Deg2Rad;
+                    float lx = speedoCenter.x + labelRadius * Mathf.Cos(angleRad);
+                    float ly = speedoCenter.y + labelRadius * Mathf.Sin(angleRad);
+                    GUI.Label(new Rect(lx - 20f, ly - 10f, 40f, 20f), dialValues[i].ToString(), dialLabelStyle);
+                }
+
+                Matrix4x4 origMatrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(needleAngle, speedoCenter);
+                
+                // Draw a thin neon pink vertical line from the center upwards
+                Rect needleRect = new Rect(speedoCenter.x - 2.5f, speedoCenter.y - 100f, 5f, 100f);
+                Color origColor = GUI.color;
+                GUI.color = new Color(1f, 0.2f, 0.6f, 0.95f); // Neon pink
+                GUI.DrawTexture(needleRect, Texture2D.whiteTexture);
+                GUI.color = origColor;
+                
+                GUI.matrix = origMatrix;
+
+                // Draw gear text in the center of the ring
+                var centerGearStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 32,
+                    fontStyle = FontStyle.BoldAndItalic,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = new Color(0.2f, 1.0f, 0.4f, 1.0f) }
+                };
+                GUI.Label(new Rect(speedoCenter.x - 30f, speedoCenter.y - 20f, 60f, 40f), gearStr, centerGearStyle);
+
+                // Draw digital speed readout at the bottom center of the circular dial
+                var neonDigitalStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 24,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter,
+                    richText = true
+                };
+                string neonSpeedText = $"<color=#FFFF33>{Mathf.RoundToInt(speedMsVal)}</color> <color=#FF3366>m/s</color>";
+                GUI.Label(new Rect(faceRect.x, faceRect.yMax - 40f, faceRect.width, 35f), neonSpeedText, neonDigitalStyle);
+
+                // 4. Pedals Overlay (Bottom-Right corner)
+                float pedalAreaWidth = 100f;
+                float pedalAreaHeight = 90f;
+                float pedalStartX = Screen.width - 145f;
+                float pedalStartY = Screen.height - 110f;
+
+                // Brake pedal (Left)
+                float brakeWidth = 32f;
+                float brakeHeight = 60f;
+                Rect brakeBgRect = new Rect(pedalStartX, pedalStartY + (pedalAreaHeight - brakeHeight), brakeWidth, brakeHeight);
+                GUI.DrawTexture(brakeBgRect, _pedalBgTex);
+
+                float brakeFillHeight = brakeHeight * _brakeInput;
+                Rect brakeFillRect = new Rect(brakeBgRect.x, brakeBgRect.yMax - brakeFillHeight, brakeBgRect.width, brakeFillHeight);
+                if (brakeFillHeight > 1f)
+                {
+                    GUI.DrawTexture(brakeFillRect, _pedalFillBrakeTex);
+                }
+
+                var pedalLabelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 11,
+                    fontStyle = FontStyle.Bold,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = new Color(0.8f, 0.8f, 0.8f) }
+                };
+                GUI.Label(new Rect(brakeBgRect.x, brakeBgRect.yMax + 2f, brakeBgRect.width, 18f), "BRAKE", pedalLabelStyle);
+
+                // Accelerator pedal (Right)
+                float accelWidth = 24f;
+                float accelHeight = 78f;
+                Rect accelBgRect = new Rect(pedalStartX + brakeWidth + 18f, pedalStartY + (pedalAreaHeight - accelHeight), accelWidth, accelHeight);
+                GUI.DrawTexture(accelBgRect, _pedalBgTex);
+
+                float accelFillHeight = accelHeight * _throttle;
+                Rect accelFillRect = new Rect(accelBgRect.x, accelBgRect.yMax - accelFillHeight, accelBgRect.width, accelFillHeight);
+                if (accelFillHeight > 1f)
+                {
+                    GUI.DrawTexture(accelFillRect, _pedalFillAccelTex);
+                }
+
+                GUI.Label(new Rect(accelBgRect.x - 5f, accelBgRect.yMax + 2f, accelBgRect.width + 10f, 18f), "GAS", pedalLabelStyle);
+
+                // 5. Driving controls helper
+                var helperStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 12,
+                    fontStyle = FontStyle.Normal,
+                    normal = { textColor = new Color(0.7f, 0.7f, 0.7f, 0.6f) }
+                };
+                GUI.Label(new Rect(25, Screen.height - 35, 600, 25), "[W/S] DRIVE  [A/D] STEER  [R] REVERSE  [SPACE] PAUSE  [LMB] RAYCAST POINTER", helperStyle);
+            }
         }
 
         private void OnDestroy()
         {
-            if (_gearBgTex != null)
-            {
-                Destroy(_gearBgTex);
-            }
+            if (_gearBgTex != null) Destroy(_gearBgTex);
+            if (_speedometerFaceTex != null) Destroy(_speedometerFaceTex);
+            if (_circleBadgeTex != null) Destroy(_circleBadgeTex);
+            if (_hudPlateTex != null) Destroy(_hudPlateTex);
+            if (_pedalBgTex != null) Destroy(_pedalBgTex);
+            if (_pedalFillBrakeTex != null) Destroy(_pedalFillBrakeTex);
+            if (_pedalFillAccelTex != null) Destroy(_pedalFillAccelTex);
         }
 
 #if UNITY_EDITOR

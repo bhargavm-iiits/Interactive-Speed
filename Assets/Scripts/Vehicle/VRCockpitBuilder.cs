@@ -709,7 +709,7 @@ namespace Vehicle
             var unitGO = new GameObject("UnitText");
             unitGO.transform.SetParent(canvasGO.transform, false);
             var unitText = unitGO.AddComponent<Text>();
-            unitText.text      = "km/h";
+            unitText.text      = "m/s";
             unitText.fontSize  = 22;
             unitText.color     = new Color(0.6f, 0.6f, 0.6f);
             unitText.alignment = TextAnchor.MiddleCenter;

@@ -44,7 +44,6 @@ namespace InfiniteWorld
         private string _notesSummary;
 
         // Chat state
-        private string _chatQueryText = "";
         private string _chatResponseText = "Select a query below to ask the AI Tutor...";
 
         private void Start()

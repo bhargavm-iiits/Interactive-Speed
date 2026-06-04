@@ -72,18 +72,34 @@ namespace InfiniteWorldEditor
             EditorGUILayout.EndScrollView();
         }
 
+        public static void RebuildWorldSilent()
+        {
+            var wizard = ScriptableObject.CreateInstance<InfiniteWorldSetupWizard>();
+            wizard.AutoDetect();
+            wizard.BuildInternal(true);
+            DestroyImmediate(wizard);
+        }
+
         private void Build()
+        {
+            BuildInternal(false);
+        }
+
+        private void BuildInternal(bool silent)
         {
             // Cannot modify scene during play mode
             if (Application.isPlaying)
             {
-                EditorUtility.DisplayDialog("Stop Play Mode First",
-                    "Please press the Play button to STOP play mode before building the world.",
-                    "OK");
+                if (!silent)
+                {
+                    EditorUtility.DisplayDialog("Stop Play Mode First",
+                        "Please press the Play button to STOP play mode before building the world.",
+                        "OK");
+                }
                 return;
             }
 
-            if (!EditorUtility.DisplayDialog("Build 5 km World",
+            if (!silent && !EditorUtility.DisplayDialog("Build 5 km World",
                 "Clears ALL existing StaticWorldBuilders and rebuilds the world in the Scene view.\n\nYou will see the terrain, road and forest appear immediately.\n\nProceed?",
                 "Build!", "Cancel"))
                 return;
@@ -198,6 +214,8 @@ namespace InfiniteWorldEditor
             else
                 Debug.Log("[InfiniteWorld] Oak tree prefab assigned successfully.");
 
+
+
             // ── Build immediately in Edit mode — world appears in Scene view now ──
             EditorUtility.DisplayProgressBar("Building 5 km World",
                 "Generating terrain, road and forest…", 0.1f);
@@ -215,7 +233,11 @@ namespace InfiniteWorldEditor
                     AssetDatabase.DeleteAsset(tdPath);
                     AssetDatabase.CreateAsset(terrain.terrainData, tdPath);
                     AssetDatabase.SaveAssets();
-                    Debug.Log("[InfiniteWorld] TerrainData saved permanently to disk.");
+                    AssetDatabase.Refresh();
+                    
+                    // Rebind to the newly created asset so the scene doesn't lose GUID reference on reload
+                    terrain.terrainData = AssetDatabase.LoadAssetAtPath<TerrainData>(tdPath);
+                    Debug.Log("[InfiniteWorld] TerrainData saved permanently to disk and rebound.");
                 }
             }
 
@@ -244,14 +266,18 @@ namespace InfiniteWorldEditor
             }
 
             Undo.CollapseUndoOperations(group);
-            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(
-                UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+            var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(activeScene);
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(activeScene);
 
-            EditorUtility.DisplayDialog("Done! 🌿",
-                "Scene ready!\n\n" +
-                "► Press PLAY — a loading screen will appear for ~2 seconds, then the 5 km countryside road environment will be fully visible.\n\n" +
-                "[Space]  pause\n[W/S]    speed\n[RMB]    look around",
-                "Play!");
+            if (!silent)
+            {
+                EditorUtility.DisplayDialog("Done! 🌿",
+                    "Scene ready!\n\n" +
+                    "► Press PLAY — a loading screen will appear for ~2 seconds, then the 5 km countryside road environment will be fully visible.\n\n" +
+                    "[Space]  pause\n[W/S]    speed\n[RMB]    look around",
+                    "Play!");
+            }
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
@@ -284,8 +310,15 @@ namespace InfiniteWorldEditor
 
         private static void DestroyIfExists(string name)
         {
-            var go = GameObject.Find(name);
-            if (go != null) Undo.DestroyObjectImmediate(go);
+            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+            var roots = scene.GetRootGameObjects();
+            foreach (var root in roots)
+            {
+                if (root != null && root.name == name)
+                {
+                    Undo.DestroyObjectImmediate(root);
+                }
+            }
         }
 
         private static void RemoveComponent<T>(GameObject go) where T : Component
@@ -302,6 +335,16 @@ namespace InfiniteWorldEditor
             int removed = RemoveMissingScripts();
             EditorUtility.DisplayDialog("Missing Scripts Removed",
                 $"Removed {removed} missing script reference(s) from the scene.", "OK");
+        }
+
+        [MenuItem("Tools/Optimize Scene Size (Strip Forest & Road)")]
+        public static void OptimizeSceneSize()
+        {
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.OpenScene("Assets/Scenes/Speed.unity");
+            DestroyIfExists("Forest");
+            DestroyIfExists("RoadMesh");
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene);
+            Debug.Log("[SceneOptimizer] Successfully stripped Forest and RoadMesh. Scene size optimized.");
         }
 
         /// <summary>
@@ -358,6 +401,8 @@ namespace InfiniteWorldEditor
                 $"Applied URP green/brown materials to {n} renderer(s) in the scene.\n\n" +
                 "Rebuild the world if needed: Window → Infinite World → Setup Wizard", "OK");
         }
+
+
 
         /// <summary>
         /// Creates two fresh URP materials (leaf = green, bark = brown) and

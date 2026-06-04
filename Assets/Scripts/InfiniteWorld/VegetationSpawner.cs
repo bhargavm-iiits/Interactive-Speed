@@ -35,8 +35,16 @@ namespace InfiniteWorld
         [Tooltip("Minimum spacing between trees (metres).")]
         public float minTreeSpacing = 8f;
 
-        // Reference set externally
         private InfiniteRoadSystem _roadSystem;
+
+        private void Awake()
+        {
+            clusterTreeDensity = 0.045f;
+            scatterTreeDensity = 0.018f;
+            minTreeSpacing = 7.5f;
+            roadExclusionRadius = 11.0f;
+            grassDensity = 10;
+        }
 
         public void Initialize(InfiniteRoadSystem roadSystem)
         {
@@ -98,6 +106,8 @@ namespace InfiniteWorld
                 }
 
                 td.treeInstances = trees.ToArray();
+
+
             }
             else
             {
@@ -113,21 +123,17 @@ namespace InfiniteWorld
 
         private void SetupTreePrototypes(TerrainData td)
         {
-            if (td.treePrototypes.Length > 0) return; // already set
+            if (td.treePrototypes.Length > 0) return;
 
+            List<TreePrototype> protos = new List<TreePrototype>();
             if (treePrefabs != null && treePrefabs.Length > 0)
             {
-                var protos = new TreePrototype[treePrefabs.Length];
-                for (int i = 0; i < treePrefabs.Length; i++)
-                    protos[i] = new TreePrototype { prefab = treePrefabs[i], bendFactor = 0.5f };
-                td.treePrototypes = protos;
+                foreach (var p in treePrefabs)
+                {
+                    if (p != null) protos.Add(new TreePrototype { prefab = p, bendFactor = 0.5f });
+                }
             }
-            else
-            {
-                // Procedural placeholder: use a Unity Capsule as stand-in
-                // (no external asset needed)
-                td.treePrototypes = new TreePrototype[0];
-            }
+            td.treePrototypes = protos.ToArray();
         }
 
         // ── Grass Details ─────────────────────────────────────────────────────
@@ -137,6 +143,13 @@ namespace InfiniteWorld
             if (td.detailPrototypes.Length > 0) return; // already set
 
             Texture2D tex = grassDetailTexture;
+            if (tex == null)
+            {
+#if UNITY_EDITOR
+                tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/MicroVerse-Extras/Terrain Textures/Content/Prefabs/Texture/Grass 01.png");
+#endif
+            }
+
             if (tex == null)
             {
                 tex = new Texture2D(4, 4);
@@ -149,13 +162,13 @@ namespace InfiniteWorld
             var dp = new DetailPrototype
             {
                 prototypeTexture = tex,
-                renderMode = DetailRenderMode.Grass,
-                dryColor = new Color(0.72f, 0.67f, 0.3f),
-                healthyColor = new Color(0.35f, 0.6f, 0.2f),
-                minWidth = 0.5f,
-                maxWidth = 1.0f,
-                minHeight = 0.3f,
-                maxHeight = 0.7f,
+                renderMode = DetailRenderMode.GrassBillboard, // Render as camera-facing billboards for volumetric realistic 3D look
+                dryColor = new Color(0.68f, 0.62f, 0.28f),
+                healthyColor = new Color(0.3f, 0.55f, 0.18f),
+                minWidth = 0.8f,
+                maxWidth = 1.6f,
+                minHeight = 0.6f,
+                maxHeight = 1.3f,
                 noiseSpread = 0.4f,
                 usePrototypeMesh = false
             };

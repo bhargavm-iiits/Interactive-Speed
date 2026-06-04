@@ -139,12 +139,27 @@ namespace InfiniteWorld
 
             for (int seg = 1; seg < count - 1; seg++)
             {
+                Vector3 pStart = ControlPoints[seg];
+                Vector3 pEnd = ControlPoints[seg + 1];
+
+                // Fast bounding box filtering on Z and X axis to skip far segments
+                float minSegZ = Mathf.Min(pStart.z, pEnd.z) - radius;
+                float maxSegZ = Mathf.Max(pStart.z, pEnd.z) + radius;
+                if (worldPos.z < minSegZ || worldPos.z > maxSegZ)
+                    continue;
+
+                float minSegX = Mathf.Min(pStart.x, pEnd.x) - radius;
+                float maxSegX = Mathf.Max(pStart.x, pEnd.x) + radius;
+                if (worldPos.x < minSegX || worldPos.x > maxSegX)
+                    continue;
+
                 for (int sub = 0; sub < 10; sub++)
                 {
                     float t = sub / 10f;
                     Vector3 p = CatmullRom(seg, t);
-                    p.y = worldPos.y; // compare XZ only
-                    if (Vector3.SqrMagnitude(new Vector3(worldPos.x - p.x, 0, worldPos.z - p.z)) < radiusSq)
+                    float dx = worldPos.x - p.x;
+                    float dz = worldPos.z - p.z;
+                    if (dx * dx + dz * dz < radiusSq)
                         return true;
                 }
             }

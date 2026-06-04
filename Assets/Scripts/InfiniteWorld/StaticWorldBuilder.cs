@@ -59,6 +59,14 @@ namespace InfiniteWorld
         public float treeScaleMin    = 0.7f;
         [Tooltip("Max tree scale multiplier.")]
         public float treeScaleMax    = 1.4f;
+        [Tooltip("Dwarf Umbrella bush prefab.")]
+        public GameObject bushPrefab;
+        [Tooltip("Min bushes per cluster.")]
+        public int   bushClusterMin  = 45;
+        [Tooltip("Max bushes per cluster.")]
+        public int   bushClusterMax  = 75;
+        [Tooltip("Min distance from road centre to start planting bushes.")]
+        public float bushMinDist     = 7f;
 
         // ── Tree Physics ──────────────────────────────────────────────
         [Header("Tree Physics")]
@@ -78,7 +86,12 @@ namespace InfiniteWorld
         [Tooltip("Random seed — change for a different tree layout.")]
         public int   seed         = 42;
 
+        [Header("Optimisation")]
+        [Tooltip("Maximum distance from the camera at which trees are active.")]
+        public float treeVisibleRange = 250f;
+
         // ── Internal state ────────────────────────────────────────────────────
+        private List<GameObject> _plantedTrees = new List<GameObject>();
         private Terrain     _terrain;
         private Vector3[]   _roadPath;
         private int         _pathSteps;
@@ -124,26 +137,126 @@ namespace InfiniteWorld
 
         private void Start()
         {
-            // If the wizard already built the world in Edit mode, skip.
+            StartCoroutine(TreeDistanceCullingLoop());
+
+            // If the wizard already built the world in Edit mode, run optimized runtime setup.
             if (_built)
             {
-                _loading = false;
-                _terrain = GetComponentInChildren<Terrain>() ?? GameObject.Find("WorldTerrain")?.GetComponent<Terrain>();
-                ComputeRoadPath();
-
-                // Back-fill Y into road path now that terrain exists
-                if (_terrain != null && _roadPath != null)
-                {
-                    for (int i = 0; i < _roadPath.Length; i++)
-                    {
-                        float wz = i * _pathStep;
-                        float wx = _roadPath[i].x;
-                        _roadPath[i].y = SampleTerrainAt(wx, wz) + cameraHeight;
-                    }
-                }
+                StartCoroutine(RuntimeSetup());
                 return;
             }
             StartCoroutine(Build());
+        }
+
+        private IEnumerator TreeDistanceCullingLoop()
+        {
+            // Wait until loading is complete to prevent interference during terrain/tree creation
+            while (_loading)
+            {
+                yield return new WaitForSeconds(0.2f);
+            }
+
+            // If the forest was built at edit-time (or _plantedTrees is empty), try to gather the existing trees.
+            if (_plantedTrees == null || _plantedTrees.Count == 0)
+            {
+                _plantedTrees = new List<GameObject>();
+                GameObject forestObj = GameObject.Find("Forest");
+                if (forestObj != null)
+                {
+                    foreach (Transform child in forestObj.transform)
+                    {
+                        if (child != null && child.name == "Oak")
+                        {
+                            _plantedTrees.Add(child.gameObject);
+                        }
+                    }
+                }
+            }
+
+            Transform playerCam = null;
+            float maxDistanceSqr = treeVisibleRange * treeVisibleRange;
+
+            while (true)
+            {
+                if (playerCam == null)
+                {
+                    if (Camera.main != null)
+                    {
+                        playerCam = Camera.main.transform;
+                    }
+                    yield return new WaitForSeconds(0.5f);
+                    continue;
+                }
+
+                maxDistanceSqr = treeVisibleRange * treeVisibleRange;
+                Vector3 camPos = playerCam.position;
+
+                // Remove any destroyed trees to keep the list clean and compact
+                _plantedTrees.RemoveAll(item => item == null);
+
+                // Spread the distance checks across frames to maintain smooth framerate.
+                // Checking 150 trees per frame is extremely lightweight and handles ~3200 trees in ~20 frames.
+                int checkPerFrame = 150;
+                int count = _plantedTrees.Count;
+
+                for (int i = 0; i < count; i++)
+                {
+                    if (i >= _plantedTrees.Count) break;
+                    GameObject tree = _plantedTrees[i];
+                    if (tree == null) continue;
+
+                    float distSqr = (tree.transform.position - camPos).sqrMagnitude;
+                    bool shouldBeActive = distSqr <= maxDistanceSqr;
+
+                    if (tree.activeSelf != shouldBeActive)
+                    {
+                        tree.SetActive(shouldBeActive);
+                    }
+
+                    if (i % checkPerFrame == 0 && i > 0)
+                    {
+                        yield return null;
+                    }
+                }
+
+                yield return new WaitForSeconds(0.1f);
+            }
+        }
+
+        private IEnumerator RuntimeSetup()
+        {
+            _loading = true; // show loading screen
+            _terrain = GetComponentInChildren<Terrain>() ?? GameObject.Find("WorldTerrain")?.GetComponent<Terrain>();
+            ComputeRoadPath();
+
+            // Back-fill Y into road path now that terrain exists
+            if (_terrain != null && _roadPath != null)
+            {
+                for (int i = 0; i < _roadPath.Length; i++)
+                {
+                    float wz = i * _pathStep;
+                    float wx = _roadPath[i].x;
+                    _roadPath[i].y = SampleTerrainAt(wx, wz) + cameraHeight;
+                }
+            }
+
+            // Dynamically build road mesh and forest if they are not in the scene (avoids massive scene file bloat and startup latency)
+            if (GameObject.Find("RoadMesh") == null)
+            {
+                SetMsg("Building road…", 0.40f);
+                BuildRoadMesh();
+                yield return null;
+            }
+
+            if (GameObject.Find("Forest") == null)
+            {
+                SetMsg("Planting forest…", 0.70f);
+                yield return StartCoroutine(PlantTreesCoroutine());
+            }
+
+            PositionCamera();
+            _loading = false;
+            Debug.Log("[StaticWorldBuilder] Runtime setup complete.");
         }
 
         private IEnumerator Build()
@@ -155,7 +268,7 @@ namespace InfiniteWorld
             SetMsg("Painting grass…",   0.38f); ApplySplatmap();   yield return null;
             SetMsg("Adding cover…",     0.55f); ApplyGrassDetail();yield return null;
             SetMsg("Building road…",    0.65f); BuildRoadMesh();   yield return null;
-            SetMsg("Planting trees…",   0.75f); PlantTrees();      yield return null;
+            SetMsg("Planting forest…",   0.75f); yield return StartCoroutine(PlantTreesCoroutine());
             SetMsg("Camera…",           0.95f); PositionCamera();
             _loading = false; _built = true;
             Debug.Log("[StaticWorldBuilder] 5 km world ready.");
@@ -425,26 +538,47 @@ namespace InfiniteWorld
                 }
             }
 
-            // Dashed centre line
-            float dashOn = 8f, dashOff = 5f, dashW = 0.10f, d = 0f;
-            bool on = true; int lb = 0;
-            while (d < worldLength - dashOn)
+            // Double solid center line
+            float lineW = 0.08f; // width of each line
+            float gap = 0.08f;  // gap between the two lines
+            for (int i = 0; i <= steps; i++)
             {
-                if (on)
+                float z   = i * _pathStep;
+                float rx  = RoadX(z);
+                float ry  = SampleTerrainAt(rx, z) + 0.045f; // slightly elevated above asphalt
+
+                Vector3 fwd = i < steps
+                    ? new Vector3(RoadX(z + _pathStep) - rx, 0, _pathStep).normalized
+                    : Vector3.forward;
+                Vector3 right = new Vector3(fwd.z, 0, -fwd.x);
+
+                Vector3 c = new Vector3(rx, ry, z);
+
+                // Left Line Vertices
+                lV.Add(c - right * (gap * 0.5f + lineW));
+                lV.Add(c - right * (gap * 0.5f));
+
+                // Right Line Vertices
+                lV.Add(c + right * (gap * 0.5f));
+                lV.Add(c + right * (gap * 0.5f + lineW));
+
+                float uY = z / 5f;
+                lU.Add(new Vector2(0f, uY));
+                lU.Add(new Vector2(0.5f, uY));
+                lU.Add(new Vector2(0.5f, uY));
+                lU.Add(new Vector2(1f, uY));
+
+                if (i < steps)
                 {
-                    float z0 = d, z1 = d + dashOn;
-                    float x0 = RoadX(z0), x1 = RoadX(z1);
-                    float y0 = SampleTerrainAt(x0, z0) + 0.045f;
-                    float y1 = SampleTerrainAt(x1, z1) + 0.045f;
-                    lV.Add(new Vector3(x0 - dashW, y0, z0)); lV.Add(new Vector3(x0 + dashW, y0, z0));
-                    lV.Add(new Vector3(x1 - dashW, y1, z1)); lV.Add(new Vector3(x1 + dashW, y1, z1));
-                    lU.Add(Vector2.zero); lU.Add(Vector2.right);
-                    lU.Add(Vector2.up);   lU.Add(Vector2.one);
-                    lT.Add(lb); lT.Add(lb+2); lT.Add(lb+1);
-                    lT.Add(lb+1); lT.Add(lb+2); lT.Add(lb+3);
-                    lb += 4;
+                    int b = i * 4;
+                    // Left Line triangles
+                    lT.Add(b); lT.Add(b+4); lT.Add(b+1);
+                    lT.Add(b+1); lT.Add(b+4); lT.Add(b+5);
+
+                    // Right Line triangles
+                    lT.Add(b+2); lT.Add(b+6); lT.Add(b+3);
+                    lT.Add(b+3); lT.Add(b+6); lT.Add(b+7);
                 }
-                d += on ? dashOn : dashOff; on = !on;
             }
 
             var root = new GameObject("RoadMesh");
@@ -494,9 +628,19 @@ namespace InfiniteWorld
                 return;
             }
 
+            if (bushPrefab == null)
+            {
+#if UNITY_EDITOR
+                bushPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/realistic-bushtree-dwarf-umbrella/DwarfUmbrellaPrefab.prefab");
+#endif
+            }
+
+            _plantedTrees.Clear();
+
             var forestRoot = new GameObject("Forest");
             var rng = new System.Random(seed);
             int totalTrees = 0;
+            int totalBushes = 0;
 
             for (int c = 0; c < forestClusters; c++)
             {
@@ -563,12 +707,109 @@ namespace InfiniteWorld
                         tp.impactForceMultiplier = treeImpactMultiplier;
                         tp.destroyDelay         = treeDestroyDelay;
 
+                        _plantedTrees.Add(tree);
                         totalTrees++;
                     }
+
+
                 }
             }
 
-            Debug.Log($"[StaticWorldBuilder] Oak forest: {totalTrees} trees planted.");
+            Debug.Log($"[StaticWorldBuilder] Oak forest: {totalTrees} trees, {totalBushes} bushes planted.");
+        }
+
+        private IEnumerator PlantTreesCoroutine()
+        {
+            if (oakTreePrefab == null)
+            {
+                Debug.LogWarning("[StaticWorldBuilder] oakTreePrefab is not assigned! Run the Setup Wizard to auto-assign it.");
+                yield break;
+            }
+
+            if (bushPrefab == null)
+            {
+#if UNITY_EDITOR
+                bushPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/realistic-bushtree-dwarf-umbrella/DwarfUmbrellaPrefab.prefab");
+#endif
+            }
+
+            _plantedTrees.Clear();
+
+            var forestRoot = new GameObject("Forest");
+            forestRoot.transform.SetParent(this.transform);
+            var rng = new System.Random(seed);
+            int totalTrees = 0;
+            int totalBushes = 0;
+            int yieldCounter = 0;
+
+            for (int c = 0; c < forestClusters; c++)
+            {
+                float cz = 60f + (float)c / forestClusters * (worldLength - 120f);
+
+                for (int s = 0; s < 2; s++)
+                {
+                    float side  = (s == 0) ? 1f : -1f;
+                    float cDist = treeMinDist + 8f + (float)rng.NextDouble() * (treeMaxDist - treeMinDist - 8f);
+                    float cx    = RoadX(cz) + side * cDist;
+
+                    int count = clusterMin + rng.Next(0, clusterMax - clusterMin + 1);
+
+                    for (int t = 0; t < count; t++)
+                    {
+                        double ang  = rng.NextDouble() * System.Math.PI * 2.0;
+                        double dist = System.Math.Sqrt(rng.NextDouble()) * clusterRadius;
+                        float tx = cx + (float)(System.Math.Cos(ang) * dist);
+                        float tz = cz + (float)(System.Math.Sin(ang) * dist);
+
+                        if (Mathf.Abs(tx - RoadX(tz)) < treeMinDist) continue;
+
+                        float ty  = SampleTerrainAt(tx, tz);
+                        float scl = treeScaleMin + (float)rng.NextDouble() * (treeScaleMax - treeScaleMin);
+                        float rot = (float)(rng.NextDouble() * 360.0);
+
+                        var tree = (GameObject)UnityEngine.Object.Instantiate(
+                            oakTreePrefab,
+                            new Vector3(tx, ty, tz),
+                            Quaternion.Euler(0f, rot, 0f),
+                            forestRoot.transform);
+                        tree.name = "Oak";
+                        tree.tag  = "Tree";
+                        tree.transform.localScale = Vector3.one * scl;
+
+                        var capsule = tree.GetComponent<CapsuleCollider>();
+                        if (capsule == null) capsule = tree.AddComponent<CapsuleCollider>();
+                        capsule.direction = 1;
+                        capsule.radius    = 0.6f;
+                        capsule.height    = 20f;
+                        capsule.center    = new Vector3(0f, 10f, 0f);
+
+                        var rb = tree.GetComponent<Rigidbody>();
+                        if (rb == null) rb = tree.AddComponent<Rigidbody>();
+                        rb.mass        = treeMass;
+                        rb.isKinematic = true;
+                        rb.useGravity  = false;
+                        rb.interpolation = RigidbodyInterpolation.Interpolate;
+
+                        var tp = tree.AddComponent<TreePhysics>();
+                        tp.toppleThreshold      = treeToppleThreshold;
+                        tp.impactForceMultiplier = treeImpactMultiplier;
+                        tp.destroyDelay         = treeDestroyDelay;
+
+                        _plantedTrees.Add(tree);
+                        totalTrees++;
+                        yieldCounter++;
+
+                        if (yieldCounter >= 250)
+                        {
+                            yieldCounter = 0;
+                            yield return null;
+                        }
+                    }
+
+
+                }
+            }
+            Debug.Log($"[StaticWorldBuilder] Oak forest: {totalTrees} trees, {totalBushes} bushes planted dynamically.");
         }
 
         // ── 7. Camera ─────────────────────────────────────────────────────────
@@ -602,8 +843,13 @@ namespace InfiniteWorld
 
         public float SampleTerrainAt(float wx, float wz)
         {
+            if (_terrain == null)
+            {
+                _terrain = GetComponentInChildren<Terrain>() ?? GameObject.Find("WorldTerrain")?.GetComponent<Terrain>();
+            }
             if (_terrain == null) return 0f;
             var td  = _terrain.terrainData;
+            if (td == null) return 0f;
             var ori = _terrain.transform.position;
             float xn = Mathf.Clamp01((wx - ori.x) / td.size.x);
             float zn = Mathf.Clamp01((wz - ori.z) / td.size.z);

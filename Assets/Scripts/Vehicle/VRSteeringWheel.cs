@@ -89,12 +89,17 @@ namespace Vehicle
             if (anyGrabbing)
             {
                 float delta = CalculateWheelDelta();
-                _wheelVelocity = delta / Time.deltaTime;
+                _wheelVelocity = 0f;
+                float hapticAmt = 0f;
+                if (Time.deltaTime > 0.0001f)
+                {
+                    _wheelVelocity = delta / Time.deltaTime;
+                    hapticAmt = Mathf.Abs(delta / Time.deltaTime) / 360f * steeringHapticAmplitude;
+                }
                 _wheelAngle += delta;
                 _wheelAngle  = Mathf.Clamp(_wheelAngle, -lockToLockDegrees * 0.5f, lockToLockDegrees * 0.5f);
 
                 // Haptics when steering hard
-                float hapticAmt = Mathf.Abs(delta / Time.deltaTime) / 360f * steeringHapticAmplitude;
                 if (hapticAmt > 0.01f)
                 {
                     SendHaptic(_rightCtrl, hapticAmt, Time.deltaTime);

@@ -186,13 +186,6 @@ public class ConnectionStatusUI : MonoBehaviour
         if (vrPopupGo == null)
         {
             vrPopupGo = new GameObject("VR_ConnectionStatusPopup");
-            var cam = Camera.main;
-            vrPopupGo.transform.SetParent(cam != null ? cam.transform : null, false);
-            
-            // Position it floating exactly in front of the driver's face (1.2m away, slightly up)
-            vrPopupGo.transform.localPosition = new Vector3(0f, 0.22f, 1.2f);
-            vrPopupGo.transform.localRotation = Quaternion.identity;
-            vrPopupGo.transform.localScale = Vector3.one * 0.7f;
             
             // Create background Quad
             GameObject bg = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -224,6 +217,21 @@ public class ConnectionStatusUI : MonoBehaviour
             vrText.fontStyle = FontStyle.Bold;
             vrText.anchor = TextAnchor.MiddleCenter;
             vrText.alignment = TextAlignment.Center;
+        }
+        
+        var cam = Camera.main;
+        if (cam != null && vrPopupGo.transform.parent != cam.transform)
+        {
+            vrPopupGo.transform.SetParent(cam.transform, false);
+            vrPopupGo.transform.localPosition = new Vector3(0f, 0.22f, 0.85f); // Bring closer: 0.85m instead of 1.2m
+            vrPopupGo.transform.localRotation = Quaternion.identity;
+            vrPopupGo.transform.localScale = Vector3.one * 0.7f;
+        }
+        else if (vrPopupGo.transform.parent == null)
+        {
+            vrPopupGo.transform.position = new Vector3(0f, 0.22f, 0.85f);
+            vrPopupGo.transform.rotation = Quaternion.identity;
+            vrPopupGo.transform.localScale = Vector3.one * 0.7f;
         }
         
         if (vrText != null) vrText.text = message;

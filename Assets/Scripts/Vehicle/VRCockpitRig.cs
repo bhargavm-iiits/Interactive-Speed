@@ -113,7 +113,11 @@ namespace Vehicle
             float brake    = car.BrakeInput;
 
             // ── Acceleration sway ──────────────────────────────────────────────
-            float accelDelta = (speed - _prevSpeed) / Time.deltaTime;
+            float accelDelta = 0f;
+            if (Time.deltaTime > 0.0001f)
+            {
+                accelDelta = (speed - _prevSpeed) / Time.deltaTime;
+            }
             _prevSpeed = speed;
 
             Vector3 targetSway = Vector3.zero;
