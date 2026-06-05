@@ -410,23 +410,24 @@ namespace InfiniteWorld
             }
 
             var classroomContainer = new GameObject("ClassroomContainer");
+            classroomContainer.transform.position = new Vector3(0f, -200f, 0f);
 
             Color wallCol = new Color(0.92f, 0.90f, 0.84f); // Warm beige
             Color floorCol = new Color(0.24f, 0.18f, 0.12f); // Dark wood
             Color ceilingCol = new Color(0.95f, 0.95f, 0.95f); // Soft white
 
-            // Floor (Y = -200f)
-            CreateRoomPart(classroomContainer, "Floor", new Vector3(0f, -200f, 0f), new Vector3(12f, 0.2f, 10f), floorCol);
-            // Ceiling (Y = -195f)
-            CreateRoomPart(classroomContainer, "Ceiling", new Vector3(0f, -195f, 0f), new Vector3(12f, 0.2f, 10f), ceilingCol);
-            // Front wall (Z = 5f)
-            CreateRoomPart(classroomContainer, "FrontWall", new Vector3(0f, -197.5f, 5f), new Vector3(12f, 5f, 0.2f), wallCol);
-            // Back wall (Z = -5f)
-            CreateRoomPart(classroomContainer, "BackWall", new Vector3(0f, -197.5f, -5f), new Vector3(12f, 5f, 0.2f), wallCol);
-            // Left wall (X = -6f)
-            CreateRoomPart(classroomContainer, "LeftWall", new Vector3(-6f, -197.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
-            // Right wall (X = 6f)
-            CreateRoomPart(classroomContainer, "RightWall", new Vector3(6f, -197.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
+            // Floor (Y = 0f local)
+            CreateRoomPart(classroomContainer, "Floor", new Vector3(0f, 0f, 0f), new Vector3(12f, 0.2f, 10f), floorCol);
+            // Ceiling (Y = 5f local)
+            CreateRoomPart(classroomContainer, "Ceiling", new Vector3(0f, 5f, 0f), new Vector3(12f, 0.2f, 10f), ceilingCol);
+            // Front wall (Z = 5f local)
+            CreateRoomPart(classroomContainer, "FrontWall", new Vector3(0f, 2.5f, 5f), new Vector3(12f, 5f, 0.2f), wallCol);
+            // Back wall (Z = -5f local)
+            CreateRoomPart(classroomContainer, "BackWall", new Vector3(0f, 2.5f, -5f), new Vector3(12f, 5f, 0.2f), wallCol);
+            // Left wall (X = -6f local)
+            CreateRoomPart(classroomContainer, "LeftWall", new Vector3(-6f, 2.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
+            // Right wall (X = 6f local)
+            CreateRoomPart(classroomContainer, "RightWall", new Vector3(6f, 2.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
 
             // Light
             GameObject lightGo = new GameObject("ClassroomLight");
@@ -446,9 +447,9 @@ namespace InfiniteWorld
             {
                 blackboardGo = Instantiate(blackboardPrefab, classroomContainer.transform);
                 blackboardGo.name = "BlackboardFBX";
-                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.5f);
+                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.2f);
                 blackboardGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
-                blackboardGo.transform.localScale = Vector3.one * 1.8f;
+                blackboardGo.transform.localScale = Vector3.one * 0.8f; // Scaled down to prevent blocking full screen
 
                 Material blackboardMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
                 Texture2D albedo = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/uploads_files_1953209_Blackboard/blackboard_low_Material.003_AlbedoTransparency.png");
@@ -484,7 +485,7 @@ namespace InfiniteWorld
                 blackboardGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 blackboardGo.name = "FallbackBlackboard";
                 blackboardGo.transform.SetParent(classroomContainer.transform, false);
-                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.5f);
+                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.2f);
                 blackboardGo.transform.localScale = new Vector3(4.5f, 2.2f, 0.1f);
                 
                 var mr = blackboardGo.GetComponent<MeshRenderer>();
@@ -505,7 +506,7 @@ namespace InfiniteWorld
                 Destroy(frame.GetComponent<Collider>());
             }
 
-            // Instantiate teacher character next to the blackboard
+            // Instantiate teacher character next to the blackboard (scaled appropriately for inches-to-meters)
             GameObject teacherGo = null;
 #if UNITY_EDITOR
             GameObject teacherPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/man/source/man/man.obj");
@@ -513,9 +514,9 @@ namespace InfiniteWorld
             {
                 teacherGo = Instantiate(teacherPrefab, classroomContainer.transform);
                 teacherGo.name = "Teacher";
-                teacherGo.transform.localPosition = new Vector3(-1.6f, -200f, 3.8f);
+                teacherGo.transform.localPosition = new Vector3(-1.8f, 0.0f, 3.8f);
                 teacherGo.transform.localRotation = Quaternion.Euler(0f, 150f, 0f); // Face slightly towards the student
-                teacherGo.transform.localScale = Vector3.one * 1.0f;
+                teacherGo.transform.localScale = Vector3.one * 0.0254f; // Convert inches to meters for 1.8m height
 
                 Material teacherMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
                 Texture2D teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/source/man/textures/00208_Quint009_Diffuse.JPG");
@@ -538,7 +539,7 @@ namespace InfiniteWorld
                 {
                     r.sharedMaterial = teacherMat;
                 }
-                Debug.Log("[SpeedLessonManager] Instantiated teacher character model standing next to the blackboard.");
+                Debug.Log("[SpeedLessonManager] Instantiated teacher character model next to the blackboard.");
             }
 #endif
 
@@ -587,7 +588,7 @@ namespace InfiniteWorld
             btn.buttonText = "DEMO GAME";
             btn.textColor = NeonOrange;
 
-            // Teleport vehicle
+            // Teleport vehicle (align with Y = -200f floor)
             if (_driver != null)
             {
                 _driver.Z = 0f;
