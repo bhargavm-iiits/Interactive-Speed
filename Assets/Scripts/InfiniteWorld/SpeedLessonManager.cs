@@ -545,13 +545,18 @@ namespace InfiniteWorld
 
             // Blackboard text
             var boardTextGo = new GameObject("BlackboardText");
-            boardTextGo.transform.SetParent(blackboardGo.transform, false);
-            boardTextGo.transform.localPosition = new Vector3(0f, 0.05f, -0.06f);
-            boardTextGo.transform.localScale = Vector3.one * 0.007f;
+            boardTextGo.transform.SetParent(classroomContainer.transform, false);
+            
             if (blackboardGo.name == "BlackboardFBX")
             {
-                boardTextGo.transform.localPosition = new Vector3(0f, 0.35f, -0.04f);
-                boardTextGo.transform.localScale = Vector3.one * 0.004f;
+                boardTextGo.transform.SetParent(blackboardGo.transform, false);
+                boardTextGo.transform.localPosition = new Vector3(-1.6f, 0.7f, -0.05f);
+                boardTextGo.transform.localScale = Vector3.one * 0.009f;
+            }
+            else
+            {
+                boardTextGo.transform.localPosition = new Vector3(-1.9f, 2.6f, 4.1f);
+                boardTextGo.transform.localScale = Vector3.one * 0.007f;
             }
 
             var tm = boardTextGo.AddComponent<TextMesh>();
@@ -564,17 +569,32 @@ namespace InfiniteWorld
                 txtMat.color = Color.white;
                 boardTextGo.GetComponent<MeshRenderer>().sharedMaterial = txtMat;
             }
-            tm.text = "WELCOME TO THE SPEED SIMULATION CLASSROOM!\n\n" +
-                      "INSTRUCTIONS:\n" +
-                      "1. Predict the target speed required for each mission.\n" +
-                      "2. Accelerate and stabilize your vehicle to match the target.\n" +
-                      "3. Keep inside the precision zone to earn high scores.\n\n" +
-                      "Ready to test your speed control skills?";
-            tm.fontSize = 52;
+
+            tm.fontSize = 72;
             tm.fontStyle = FontStyle.Bold;
-            tm.anchor = TextAnchor.MiddleCenter;
-            tm.alignment = TextAlignment.Center;
+            tm.anchor = TextAnchor.UpperLeft;
+            tm.alignment = TextAlignment.Left;
             tm.color = Color.white;
+
+            // Instantiate chalk piece
+            GameObject chalk = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            chalk.name = "ChalkPiece";
+            chalk.transform.SetParent(boardTextGo.transform.parent, false);
+            if (blackboardGo.name == "BlackboardFBX")
+            {
+                chalk.transform.localScale = new Vector3(0.02f, 0.06f, 0.02f);
+            }
+            else
+            {
+                chalk.transform.localScale = new Vector3(0.015f, 0.05f, 0.015f);
+            }
+            chalk.transform.localRotation = Quaternion.Euler(60f, 0f, 0f);
+            var chalkMr = chalk.GetComponent<MeshRenderer>();
+            var chalkMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Standard"));
+            chalkMat.color = Color.white;
+            chalkMr.sharedMaterial = chalkMat;
+            Destroy(chalk.GetComponent<Collider>());
+            chalk.SetActive(false);
 
             // DEMO GAME button
             var demoBtnGo = new GameObject("DemoGameBtn");
@@ -603,6 +623,32 @@ namespace InfiniteWorld
                     _driver.transform.rotation = Quaternion.identity;
                 }
             }
+
+            // Hide DEMO GAME button initially while writing
+            demoBtnGo.SetActive(false);
+
+            // Speed definition text content
+            string fullText = 
+                "SPEED\n\n" +
+                "Definition:\n" +
+                "Speed is the distance travelled by\n" +
+                "an object per unit time.\n\n" +
+                "SI Unit:\n" +
+                "metre per second (m/s)\n\n" +
+                "Formula:\n" +
+                "Speed = Distance \u00f7 Time\n\n" +
+                "Real-Life Example:\n" +
+                "A car moving on a highway at 60 km/h\n" +
+                "is an example of speed.\n\n" +
+                "Key Point:\n" +
+                "Speed tells us how fast or slow\n" +
+                "an object is moving.";
+
+            // Run writing animation
+            yield return StartCoroutine(AnimateChalkWriting(tm, chalk, fullText, blackboardGo));
+
+            // Reveal DEMO GAME button
+            demoBtnGo.SetActive(true);
 
             bool demoClicked = false;
             btn.OnClick = () => { demoClicked = true; };
@@ -635,6 +681,63 @@ namespace InfiniteWorld
             _driver.SnapCarToRoadStart();
 
             StartCoroutine(RunIntroSequence());
+        }
+
+        private IEnumerator AnimateChalkWriting(TextMesh tm, GameObject chalk, string fullText, GameObject blackboardGo)
+        {
+            tm.text = "";
+            chalk.SetActive(true);
+
+            float charWidth = 0.015f;
+            float lineHeight = 0.08f;
+
+            if (blackboardGo.name == "BlackboardFBX")
+            {
+                charWidth = 0.018f;
+                lineHeight = 0.085f;
+            }
+            else
+            {
+                charWidth = 0.015f;
+                lineHeight = 0.08f;
+            }
+
+            string[] lines = fullText.Split('\n');
+            string currentText = "";
+
+            Vector3 startPos = tm.transform.localPosition;
+
+            for (int l = 0; l < lines.Length; l++)
+            {
+                string line = lines[l];
+                
+                if (l > 0)
+                {
+                    currentText += "\n";
+                    tm.text = currentText;
+                }
+
+                float currentY = startPos.y - (l * lineHeight);
+
+                for (int c = 0; c < line.Length; c++)
+                {
+                    currentText += line[c];
+                    tm.text = currentText;
+
+                    float currentX = startPos.x + (c * charWidth);
+                    
+                    // Position chalk slightly offset from character
+                    chalk.transform.localPosition = new Vector3(currentX + 0.03f, currentY - 0.03f, startPos.z - 0.01f);
+
+                    yield return new WaitForSeconds(Random.Range(0.015f, 0.035f));
+                }
+
+                chalk.SetActive(false);
+                yield return new WaitForSeconds(0.4f);
+                chalk.SetActive(true);
+            }
+
+            chalk.SetActive(false);
         }
 
         // ── 0. INTRO SPLASH ───────────────────────────────────────────────────
