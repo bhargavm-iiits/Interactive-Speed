@@ -1927,7 +1927,7 @@ namespace InfiniteWorld
 
             if (camera == null) return;
 
-            Texture2D tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SpeedometerGrass.png");
+            Texture2D tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SpeedometerGrass.jpg");
             if (tex == null) return;
 
             _editorCoverGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
