@@ -551,16 +551,16 @@ namespace InfiniteWorld
             if (blackboardGo.name == "BlackboardFBX")
             {
                 boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.12f);
-                boardTextGo.transform.localScale = Vector3.one * 0.024f;
+                boardTextGo.transform.localScale = Vector3.one * 0.032f;
             }
             else
             {
                 boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.1f);
-                boardTextGo.transform.localScale = Vector3.one * 0.024f;
+                boardTextGo.transform.localScale = Vector3.one * 0.032f;
             }
 
             var tm = boardTextGo.AddComponent<TextMesh>();
-            tm.lineSpacing = 0.65f;
+            tm.lineSpacing = 0.55f;
             Font builtinFont = GetSafeBuiltinFont();
             if (builtinFont != null)
             {
@@ -581,7 +581,7 @@ namespace InfiniteWorld
             GameObject chalk = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             chalk.name = "ChalkPiece";
             chalk.transform.SetParent(boardTextGo.transform.parent, false);
-            chalk.transform.localScale = new Vector3(0.04f, 0.12f, 0.04f); // Scale up chalk to match larger text
+            chalk.transform.localScale = new Vector3(0.05f, 0.15f, 0.05f); // Scale up chalk to match larger text
             chalk.transform.localRotation = Quaternion.Euler(60f, 0f, 0f);
             var chalkMr = chalk.GetComponent<MeshRenderer>();
             var chalkMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Standard"));
@@ -695,7 +695,7 @@ namespace InfiniteWorld
             chalk.SetActive(true);
 
             float scale = tm.transform.localScale.x;
-            float lineHeight = 11.428f * tm.lineSpacing * scale;
+            float lineHeight = 8.5f * tm.lineSpacing * scale;
 
             float chalkOffsetX = 0.03f * (scale / 0.007f);
             float chalkOffsetY = -0.03f * (scale / 0.007f);
@@ -725,7 +725,7 @@ namespace InfiniteWorld
                     currentText += currentChar;
                     tm.text = currentText;
 
-                    float charWidthForC = GetCharacterWidthFactor(currentChar) * 3.9f * scale;
+                    float charWidthForC = GetCharacterWidthFactor(currentChar) * 4.6f * scale;
                     float currentX = startPos.x + accumulatedX + (charWidthForC * 0.5f);
                     
                     // Position chalk slightly offset from character
