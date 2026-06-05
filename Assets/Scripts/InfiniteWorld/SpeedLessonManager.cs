@@ -550,7 +550,7 @@ namespace InfiniteWorld
             
             if (blackboardGo.name == "BlackboardFBX")
             {
-                boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.12f);
+                boardTextGo.transform.localPosition = new Vector3(-2.1f, 3.3f, 4.12f);
                 boardTextGo.transform.localScale = Vector3.one * 0.032f;
             }
             else
