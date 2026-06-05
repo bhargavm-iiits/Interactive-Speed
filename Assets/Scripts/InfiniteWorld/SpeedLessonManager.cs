@@ -355,12 +355,22 @@ namespace InfiniteWorld
             _driver.Paused = true;
             _driver.automaticSpeedKmh = 0f;
 
+            // Wait for the road path and world builder to be initialized
+            while (_driver.worldBuilder == null || _driver.worldBuilder.GetRoadPosition(0f) == Vector3.zero)
+            {
+                yield return null;
+            }
+
+            // Immediately snap the vehicle to the road start on play
+            _driver.Z = 0f;
+            _driver.SnapCarToRoadStart();
+
             yield return null;
 
             // ── 0a. PRE-INTRO SPLASH: "SPEED" ──────────────────────────────────────
             var speedSplash = new GameObject("SpeedSplashBoard");
             speedSplash.transform.SetParent(Camera.main != null ? Camera.main.transform : _driver.transform, false);
-            speedSplash.transform.localPosition = new Vector3(0f, 0.05f, 0.70f);
+            speedSplash.transform.localPosition = new Vector3(0f, 0.05f, 1.20f);
             speedSplash.transform.localRotation = Quaternion.identity;
             speedSplash.transform.localScale = Vector3.zero;
 
@@ -414,11 +424,11 @@ namespace InfiniteWorld
             {
                 elapsed += Time.deltaTime;
                 float t = elapsed / animDuration;
-                float scale = Mathf.Sin(t * Mathf.PI * 0.5f) * 1.5f;
+                float scale = Mathf.Sin(t * Mathf.PI * 0.5f) * 1.3f;
                 speedSplash.transform.localScale = Vector3.one * scale;
                 yield return null;
             }
-            speedSplash.transform.localScale = Vector3.one * 1.5f;
+            speedSplash.transform.localScale = Vector3.one * 1.3f;
 
             // Pulsing effect while waiting (1.8 seconds or spacebar press)
             float waitDuration = 1.8f;
@@ -427,7 +437,7 @@ namespace InfiniteWorld
             while (waitElapsed < waitDuration && !skipPressed)
             {
                 waitElapsed += Time.deltaTime;
-                float pulse = 1.5f + Mathf.Sin(Time.time * 6f) * 0.04f;
+                float pulse = 1.3f + Mathf.Sin(Time.time * 6f) * 0.03f;
                 speedSplash.transform.localScale = Vector3.one * pulse;
 
                 var kb = UnityEngine.InputSystem.Keyboard.current;
@@ -867,9 +877,9 @@ namespace InfiniteWorld
             var cam = Camera.main;
             if (cam == null) cam = FindFirstObjectByType<Camera>();
             hud.transform.SetParent(cam != null ? cam.transform : _driver.transform, false);
-            hud.transform.localPosition = new Vector3(0f, 0.22f, 0.55f); // Positioned higher up on the windshield at 0.55m depth
+            hud.transform.localPosition = new Vector3(0f, 0.22f, 1.0f); // Positioned higher up on the windshield at 1.0m depth
             hud.transform.localRotation = Quaternion.identity;
-            hud.transform.localScale = Vector3.one * 0.8f;
+            hud.transform.localScale = Vector3.one * 0.7f;
 
             // Stats Text
             var tmGo = new GameObject("StatsText");
@@ -1252,9 +1262,9 @@ namespace InfiniteWorld
         {
             var board = new GameObject("ReviewHoloBoard");
             board.transform.SetParent(Camera.main != null ? Camera.main.transform : _driver.transform, false);
-            board.transform.localPosition = new Vector3(0f, -0.05f, 0.75f);
+            board.transform.localPosition = new Vector3(0f, 0.05f, 1.3f);
             board.transform.localRotation = Quaternion.identity;
-            board.transform.localScale = Vector3.one * 1.35f;
+            board.transform.localScale = Vector3.one * 1.1f;
             
             var tmGo = new GameObject("TitleText");
             tmGo.transform.SetParent(board.transform, false);

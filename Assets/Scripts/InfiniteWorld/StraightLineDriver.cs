@@ -936,7 +936,7 @@ namespace InfiniteWorld
             // Draw icon inside badge
             var iconStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 16,
+                fontSize = 26,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = Color.black }
             };
@@ -945,12 +945,12 @@ namespace InfiniteWorld
             // Draw value text on the left
             var valStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 16,
+                fontSize = 26,
                 fontStyle = FontStyle.BoldAndItalic,
                 alignment = TextAnchor.MiddleRight,
                 normal = { textColor = new Color(1f, 0.78f, 0.05f, 1f) }
             };
-            Rect textRect = new Rect(rect.x + 10f, rect.y, rect.width - badgeSize - 20f, rect.height);
+            Rect textRect = new Rect(rect.x + 15f, rect.y, rect.width - badgeSize - 25f, rect.height);
             GUI.Label(textRect, value, valStyle);
         }
 
@@ -1030,7 +1030,7 @@ namespace InfiniteWorld
             };
 
             if (_speedometerFaceTex == null)
-                _speedometerFaceTex = CreateSpeedometerFaceTexture(240);
+                _speedometerFaceTex = CreateSpeedometerFaceTexture(300);
 
             if (_circleBadgeTex == null)
                 _circleBadgeTex = CreateCircleTexture(32, new Color(0.9f, 0.9f, 0.9f, 0.95f));
@@ -1123,9 +1123,9 @@ namespace InfiniteWorld
                 }
 
                 float startY = 25f;
-                float panelWidth = 190f;
-                float panelHeight = 35f;
-                float spacing = 8f;
+                float panelWidth = 350f;
+                float panelHeight = 60f;
+                float spacing = 12f;
                 float startX = Screen.width - panelWidth - 25f;
 
                 // Row 1: Score
@@ -1148,7 +1148,7 @@ namespace InfiniteWorld
             if (showTelemetry)
             {
                 // 3. Neon Circular Dial Speedometer (Bottom-Center)
-                Rect faceRect = new Rect((Screen.width - 240f) / 2f, Screen.height - 265f, 240f, 240f);
+                Rect faceRect = new Rect((Screen.width - 300f) / 2f, Screen.height - 325f, 300f, 300f);
                 GUI.DrawTexture(faceRect, _speedometerFaceTex);
 
                 // Rotating Needle
@@ -1160,14 +1160,14 @@ namespace InfiniteWorld
                 // Draw dial number labels (0 to 120 at 45 degree intervals)
                 var dialLabelStyle = new GUIStyle(GUI.skin.label)
                 {
-                    fontSize = 14,
+                    fontSize = 16,
                     fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(0.7f, 0.9f, 1f, 0.85f) }
                 };
 
                 float[] dialValues = { 0, 20, 40, 60, 80, 100, 120 };
-                float labelRadius = 96f; // Positioned perfectly inside ticks
+                float labelRadius = 120f; // Positioned perfectly inside ticks
 
                 for (int i = 0; i < dialValues.Length; i++)
                 {
@@ -1182,7 +1182,7 @@ namespace InfiniteWorld
                 GUIUtility.RotateAroundPivot(needleAngle, speedoCenter);
                 
                 // Draw a thin neon pink vertical line from the center upwards
-                Rect needleRect = new Rect(speedoCenter.x - 2.5f, speedoCenter.y - 100f, 5f, 100f);
+                Rect needleRect = new Rect(speedoCenter.x - 3f, speedoCenter.y - 125f, 6f, 125f);
                 Color origColor = GUI.color;
                 GUI.color = new Color(1f, 0.2f, 0.6f, 0.95f); // Neon pink
                 GUI.DrawTexture(needleRect, Texture2D.whiteTexture);
@@ -1193,23 +1193,23 @@ namespace InfiniteWorld
                 // Draw gear text in the center of the ring
                 var centerGearStyle = new GUIStyle(GUI.skin.label)
                 {
-                    fontSize = 32,
+                    fontSize = 40,
                     fontStyle = FontStyle.BoldAndItalic,
                     alignment = TextAnchor.MiddleCenter,
                     normal = { textColor = new Color(0.2f, 1.0f, 0.4f, 1.0f) }
                 };
-                GUI.Label(new Rect(speedoCenter.x - 30f, speedoCenter.y - 20f, 60f, 40f), gearStr, centerGearStyle);
+                GUI.Label(new Rect(speedoCenter.x - 40f, speedoCenter.y - 25f, 80f, 50f), gearStr, centerGearStyle);
 
                 // Draw digital speed readout at the bottom center of the circular dial
                 var neonDigitalStyle = new GUIStyle(GUI.skin.label)
                 {
-                    fontSize = 24,
+                    fontSize = 30,
                     fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleCenter,
                     richText = true
                 };
                 string neonSpeedText = $"<color=#FFFF33>{Mathf.RoundToInt(speedMsVal)}</color> <color=#FF3366>m/s</color>";
-                GUI.Label(new Rect(faceRect.x, faceRect.yMax - 40f, faceRect.width, 35f), neonSpeedText, neonDigitalStyle);
+                GUI.Label(new Rect(faceRect.x, faceRect.yMax - 50f, faceRect.width, 40f), neonSpeedText, neonDigitalStyle);
 
                 // 4. Pedals Overlay (Bottom-Right corner)
                 float pedalAreaWidth = 100f;
