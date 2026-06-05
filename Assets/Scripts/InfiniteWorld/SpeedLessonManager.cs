@@ -546,20 +546,21 @@ namespace InfiniteWorld
             // Blackboard text
             var boardTextGo = new GameObject("BlackboardText");
             boardTextGo.transform.SetParent(classroomContainer.transform, false);
+            boardTextGo.transform.localRotation = Quaternion.identity;
             
             if (blackboardGo.name == "BlackboardFBX")
             {
-                boardTextGo.transform.SetParent(blackboardGo.transform, false);
-                boardTextGo.transform.localPosition = new Vector3(-1.6f, 0.7f, -0.05f);
-                boardTextGo.transform.localScale = Vector3.one * 0.009f;
+                boardTextGo.transform.localPosition = new Vector3(-1.4f, 2.75f, 4.12f);
+                boardTextGo.transform.localScale = Vector3.one * 0.014f;
             }
             else
             {
-                boardTextGo.transform.localPosition = new Vector3(-1.9f, 2.6f, 4.1f);
-                boardTextGo.transform.localScale = Vector3.one * 0.007f;
+                boardTextGo.transform.localPosition = new Vector3(-1.4f, 2.75f, 4.1f);
+                boardTextGo.transform.localScale = Vector3.one * 0.014f;
             }
 
             var tm = boardTextGo.AddComponent<TextMesh>();
+            tm.lineSpacing = 0.7f;
             Font builtinFont = GetSafeBuiltinFont();
             if (builtinFont != null)
             {
@@ -580,14 +581,7 @@ namespace InfiniteWorld
             GameObject chalk = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             chalk.name = "ChalkPiece";
             chalk.transform.SetParent(boardTextGo.transform.parent, false);
-            if (blackboardGo.name == "BlackboardFBX")
-            {
-                chalk.transform.localScale = new Vector3(0.02f, 0.06f, 0.02f);
-            }
-            else
-            {
-                chalk.transform.localScale = new Vector3(0.015f, 0.05f, 0.015f);
-            }
+            chalk.transform.localScale = new Vector3(0.03f, 0.09f, 0.03f); // Scale up chalk to match larger text
             chalk.transform.localRotation = Quaternion.Euler(60f, 0f, 0f);
             var chalkMr = chalk.GetComponent<MeshRenderer>();
             var chalkMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Standard"));
@@ -688,19 +682,13 @@ namespace InfiniteWorld
             tm.text = "";
             chalk.SetActive(true);
 
-            float charWidth = 0.015f;
-            float lineHeight = 0.08f;
+            float scale = tm.transform.localScale.x;
+            float charWidth = 2.143f * scale;
+            float lineHeight = 11.428f * tm.lineSpacing * scale;
 
-            if (blackboardGo.name == "BlackboardFBX")
-            {
-                charWidth = 0.018f;
-                lineHeight = 0.085f;
-            }
-            else
-            {
-                charWidth = 0.015f;
-                lineHeight = 0.08f;
-            }
+            float chalkOffsetX = 0.03f * (scale / 0.007f);
+            float chalkOffsetY = -0.03f * (scale / 0.007f);
+            float chalkOffsetZ = -0.01f;
 
             string[] lines = fullText.Split('\n');
             string currentText = "";
@@ -727,7 +715,7 @@ namespace InfiniteWorld
                     float currentX = startPos.x + (c * charWidth);
                     
                     // Position chalk slightly offset from character
-                    chalk.transform.localPosition = new Vector3(currentX + 0.03f, currentY - 0.03f, startPos.z - 0.01f);
+                    chalk.transform.localPosition = new Vector3(currentX + chalkOffsetX, currentY + chalkOffsetY, startPos.z + chalkOffsetZ);
 
                     yield return new WaitForSeconds(Random.Range(0.015f, 0.035f));
                 }
