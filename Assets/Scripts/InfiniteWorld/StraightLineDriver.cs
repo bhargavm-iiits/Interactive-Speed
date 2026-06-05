@@ -1061,7 +1061,7 @@ namespace InfiniteWorld
             {
                 var state = SpeedLessonManager.Instance.currentState;
                 showTelemetry = (state == SpeedLessonManager.LessonState.MissionActive || state == SpeedLessonManager.LessonState.Completed);
-                showTopRightStats = (state != SpeedLessonManager.LessonState.IntroSplash);
+                showTopRightStats = (state != SpeedLessonManager.LessonState.IntroSplash && state != SpeedLessonManager.LessonState.Classroom);
             }
 
             // Calculate progress percent

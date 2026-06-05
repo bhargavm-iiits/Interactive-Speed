@@ -16,6 +16,7 @@ namespace InfiniteWorld
         // ── Lesson states ─────────────────────────────────────────────────────
         public enum LessonState
         {
+            Classroom,
             IntroSplash,
             LevelSelection,
             Prediction,
@@ -42,7 +43,7 @@ namespace InfiniteWorld
         };
 
         [Header("State Tracking")]
-        public LessonState currentState = LessonState.IntroSplash;
+        public LessonState currentState = LessonState.Classroom;
         public int currentLevelIndex = 0; // 0 to 4
 
         // Colors
@@ -186,8 +187,8 @@ namespace InfiniteWorld
             _raycaster = gameObject.AddComponent<VRHologramRaycaster>();
             _hologramContainer = new GameObject("Holograms_Root");
 
-            // Kick off Intro
-            StartCoroutine(RunIntroSequence());
+            // Kick off Classroom
+            StartCoroutine(RunClassroomSequence());
         }
 
         private void Update()
@@ -346,6 +347,214 @@ namespace InfiniteWorld
                 _ghostCar.transform.position = pos + offset;
                 _ghostCar.transform.rotation = rot;
             }
+        }
+
+        private GameObject CreateRoomPart(GameObject parent, string name, Vector3 pos, Vector3 size, Color col)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = name;
+            go.transform.SetParent(parent.transform, false);
+            go.transform.localPosition = pos;
+            go.transform.localScale = size;
+
+            var mr = go.GetComponent<MeshRenderer>();
+            var mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+            mat.color = col;
+            if (name == "Floor")
+            {
+                mat.SetFloat("_Smoothness", 0.2f);
+            }
+            mr.sharedMaterial = mat;
+            return go;
+        }
+
+        private IEnumerator RunClassroomSequence()
+        {
+            currentState = LessonState.Classroom;
+            _driver.Paused = true;
+            _driver.automaticSpeedKmh = 0f;
+
+            var classroomContainer = new GameObject("ClassroomContainer");
+
+            Color wallCol = new Color(0.92f, 0.90f, 0.84f); // Warm beige
+            Color floorCol = new Color(0.24f, 0.18f, 0.12f); // Dark wood
+            Color ceilingCol = new Color(0.95f, 0.95f, 0.95f); // Soft white
+
+            // Floor (Y = -200f)
+            CreateRoomPart(classroomContainer, "Floor", new Vector3(0f, -200f, 0f), new Vector3(12f, 0.2f, 10f), floorCol);
+            // Ceiling (Y = -195f)
+            CreateRoomPart(classroomContainer, "Ceiling", new Vector3(0f, -195f, 0f), new Vector3(12f, 0.2f, 10f), ceilingCol);
+            // Front wall (Z = 5f)
+            CreateRoomPart(classroomContainer, "FrontWall", new Vector3(0f, -197.5f, 5f), new Vector3(12f, 5f, 0.2f), wallCol);
+            // Back wall (Z = -5f)
+            CreateRoomPart(classroomContainer, "BackWall", new Vector3(0f, -197.5f, -5f), new Vector3(12f, 5f, 0.2f), wallCol);
+            // Left wall (X = -6f)
+            CreateRoomPart(classroomContainer, "LeftWall", new Vector3(-6f, -197.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
+            // Right wall (X = 6f)
+            CreateRoomPart(classroomContainer, "RightWall", new Vector3(6f, -197.5f, 0f), new Vector3(0.2f, 5f, 10f), wallCol);
+
+            // Light
+            GameObject lightGo = new GameObject("ClassroomLight");
+            lightGo.transform.SetParent(classroomContainer.transform, false);
+            lightGo.transform.localPosition = new Vector3(0f, 4.5f, 0f);
+            Light light = lightGo.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.range = 25f;
+            light.intensity = 3.5f;
+            light.color = new Color(1f, 0.96f, 0.88f);
+
+            // Instantiate blackboard FBX or fallback
+            GameObject blackboardGo = null;
+#if UNITY_EDITOR
+            GameObject blackboardPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/uploads_files_1953209_Blackboard/blackboard.fbx");
+            if (blackboardPrefab != null)
+            {
+                blackboardGo = Instantiate(blackboardPrefab, classroomContainer.transform);
+                blackboardGo.name = "BlackboardFBX";
+                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.5f);
+                blackboardGo.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                blackboardGo.transform.localScale = Vector3.one * 1.8f;
+
+                Material blackboardMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                Texture2D albedo = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/uploads_files_1953209_Blackboard/blackboard_low_Material.003_AlbedoTransparency.png");
+                Texture2D metallic = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/uploads_files_1953209_Blackboard/blackboard_low_Material.003_MetallicSmoothness.png");
+                Texture2D normal = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/uploads_files_1953209_Blackboard/blackboard_low_Material.003_Normal.png");
+
+                if (albedo != null) blackboardMat.mainTexture = albedo;
+                if (metallic != null)
+                {
+                    blackboardMat.SetTexture("_MetallicGlossMap", metallic);
+                    blackboardMat.EnableKeyword("_METALLICGLOSSMAP");
+                    blackboardMat.SetFloat("_Metallic", 1.0f);
+                }
+                if (normal != null)
+                {
+                    blackboardMat.SetTexture("_BumpMap", normal);
+                    blackboardMat.EnableKeyword("_NORMALMAP");
+                }
+
+                foreach (var r in blackboardGo.GetComponentsInChildren<Renderer>())
+                {
+                    r.sharedMaterial = blackboardMat;
+                    if (r.GetComponent<Collider>() == null)
+                    {
+                        r.gameObject.AddComponent<BoxCollider>();
+                    }
+                }
+            }
+#endif
+
+            if (blackboardGo == null)
+            {
+                blackboardGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                blackboardGo.name = "FallbackBlackboard";
+                blackboardGo.transform.SetParent(classroomContainer.transform, false);
+                blackboardGo.transform.localPosition = new Vector3(0f, 1.8f, 4.5f);
+                blackboardGo.transform.localScale = new Vector3(4.5f, 2.2f, 0.1f);
+                
+                var mr = blackboardGo.GetComponent<MeshRenderer>();
+                var mat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                mat.color = new Color(0.12f, 0.28f, 0.16f);
+                mr.sharedMaterial = mat;
+
+                var frame = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                frame.name = "Frame";
+                frame.transform.SetParent(blackboardGo.transform, false);
+                frame.transform.localPosition = Vector3.zero;
+                frame.transform.localScale = new Vector3(1.02f, 1.04f, 1.2f);
+                
+                var frameMr = frame.GetComponent<MeshRenderer>();
+                var frameMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                frameMat.color = new Color(0.38f, 0.22f, 0.12f);
+                frameMr.sharedMaterial = frameMat;
+                Destroy(frame.GetComponent<Collider>());
+            }
+
+            // Blackboard text
+            var boardTextGo = new GameObject("BlackboardText");
+            boardTextGo.transform.SetParent(blackboardGo.transform, false);
+            boardTextGo.transform.localPosition = new Vector3(0f, 0.05f, -0.06f);
+            boardTextGo.transform.localScale = Vector3.one * 0.007f;
+            if (blackboardGo.name == "BlackboardFBX")
+            {
+                boardTextGo.transform.localPosition = new Vector3(0f, 0.35f, -0.04f);
+                boardTextGo.transform.localScale = Vector3.one * 0.004f;
+            }
+
+            var tm = boardTextGo.AddComponent<TextMesh>();
+            Font builtinFont = GetSafeBuiltinFont();
+            if (builtinFont != null)
+            {
+                tm.font = builtinFont;
+                var txtMat = new Material(Shader.Find("GUI/Text Shader") ?? Shader.Find("UI/Default"));
+                txtMat.mainTexture = builtinFont.material.mainTexture;
+                txtMat.color = Color.white;
+                boardTextGo.GetComponent<MeshRenderer>().sharedMaterial = txtMat;
+            }
+            tm.text = "WELCOME TO THE SPEED SIMULATION CLASSROOM!\n\n" +
+                      "INSTRUCTIONS:\n" +
+                      "1. Predict the target speed required for each mission.\n" +
+                      "2. Accelerate and stabilize your vehicle to match the target.\n" +
+                      "3. Keep inside the precision zone to earn high scores.\n\n" +
+                      "Ready to test your speed control skills?";
+            tm.fontSize = 52;
+            tm.fontStyle = FontStyle.Bold;
+            tm.anchor = TextAnchor.MiddleCenter;
+            tm.alignment = TextAlignment.Center;
+            tm.color = Color.white;
+
+            // DEMO GAME button
+            var demoBtnGo = new GameObject("DemoGameBtn");
+            demoBtnGo.transform.SetParent(classroomContainer.transform, false);
+            demoBtnGo.transform.localPosition = new Vector3(0f, 0.9f, 2.2f);
+            demoBtnGo.transform.localScale = Vector3.one * 1.5f;
+
+            var btn = demoBtnGo.AddComponent<HolographicButton>();
+            btn.width = 1.8f;
+            btn.height = 0.35f;
+            btn.buttonText = "DEMO GAME";
+            btn.textColor = NeonOrange;
+
+            // Teleport vehicle
+            if (_driver != null)
+            {
+                _driver.Z = 0f;
+                if (_driver.Car != null)
+                {
+                    _driver.Car.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
+                    _driver.Car.rotation = Quaternion.identity;
+                }
+                else
+                {
+                    _driver.transform.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
+                    _driver.transform.rotation = Quaternion.identity;
+                }
+            }
+
+            bool demoClicked = false;
+            btn.OnClick = () => { demoClicked = true; };
+
+            while (!demoClicked)
+            {
+                var kb = UnityEngine.InputSystem.Keyboard.current;
+                if (kb != null)
+                {
+                    try { if (kb.spaceKey.wasPressedThisFrame) demoClicked = true; } catch { }
+                }
+                yield return null;
+            }
+
+            Destroy(classroomContainer);
+
+            while (_driver.worldBuilder == null || _driver.worldBuilder.GetRoadPosition(0f) == Vector3.zero)
+            {
+                yield return null;
+            }
+
+            _driver.Z = 0f;
+            _driver.SnapCarToRoadStart();
+
+            StartCoroutine(RunIntroSequence());
         }
 
         // ── 0. INTRO SPLASH ───────────────────────────────────────────────────
