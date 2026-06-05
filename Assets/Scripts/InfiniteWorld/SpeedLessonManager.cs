@@ -374,6 +374,41 @@ namespace InfiniteWorld
             _driver.Paused = true;
             _driver.automaticSpeedKmh = 0f;
 
+            // Wait a frame to ensure all Start() methods (like VRCockpitBuilder) have run and instantiated the steering wheel
+            yield return null;
+
+            // Find and hide steering wheel during classroom phase
+            Transform wheelPivot = null;
+            if (_driver != null)
+            {
+                if (_driver.Car != null)
+                {
+                    wheelPivot = _driver.Car.Find("SteeringWheel_Pivot");
+                }
+                if (wheelPivot == null)
+                {
+                    wheelPivot = _driver.transform.Find("SteeringWheel_Pivot");
+                }
+                if (wheelPivot == null)
+                {
+                    var allTransforms = _driver.gameObject.GetComponentsInChildren<Transform>(true);
+                    foreach (var t in allTransforms)
+                    {
+                        if (t.name == "SteeringWheel_Pivot")
+                        {
+                            wheelPivot = t;
+                            break;
+                        }
+                    }
+                }
+
+                if (wheelPivot != null)
+                {
+                    wheelPivot.gameObject.SetActive(false);
+                    Debug.Log("[SpeedLessonManager] Steering wheel hidden during classroom phase.");
+                }
+            }
+
             var classroomContainer = new GameObject("ClassroomContainer");
 
             Color wallCol = new Color(0.92f, 0.90f, 0.84f); // Warm beige
@@ -470,6 +505,43 @@ namespace InfiniteWorld
                 Destroy(frame.GetComponent<Collider>());
             }
 
+            // Instantiate teacher character next to the blackboard
+            GameObject teacherGo = null;
+#if UNITY_EDITOR
+            GameObject teacherPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/man/source/man/man.obj");
+            if (teacherPrefab != null)
+            {
+                teacherGo = Instantiate(teacherPrefab, classroomContainer.transform);
+                teacherGo.name = "Teacher";
+                teacherGo.transform.localPosition = new Vector3(-1.6f, -200f, 3.8f);
+                teacherGo.transform.localRotation = Quaternion.Euler(0f, 150f, 0f); // Face slightly towards the student
+                teacherGo.transform.localScale = Vector3.one * 1.0f;
+
+                Material teacherMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+                Texture2D teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/source/man/textures/00208_Quint009_Diffuse.JPG");
+                if (teacherTex == null)
+                {
+                    teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/textures/00208_Quint009_Diffuse.jpeg");
+                }
+
+                if (teacherTex != null)
+                {
+                    teacherMat.mainTexture = teacherTex;
+                }
+                else
+                {
+                    teacherMat.color = new Color(0.8f, 0.7f, 0.6f);
+                }
+                teacherMat.SetFloat("_Smoothness", 0.05f);
+
+                foreach (var r in teacherGo.GetComponentsInChildren<Renderer>())
+                {
+                    r.sharedMaterial = teacherMat;
+                }
+                Debug.Log("[SpeedLessonManager] Instantiated teacher character model standing next to the blackboard.");
+            }
+#endif
+
             // Blackboard text
             var boardTextGo = new GameObject("BlackboardText");
             boardTextGo.transform.SetParent(blackboardGo.transform, false);
@@ -542,6 +614,13 @@ namespace InfiniteWorld
                     try { if (kb.spaceKey.wasPressedThisFrame) demoClicked = true; } catch { }
                 }
                 yield return null;
+            }
+
+            // Restore steering wheel when transitioning to demo game
+            if (wheelPivot != null)
+            {
+                wheelPivot.gameObject.SetActive(true);
+                Debug.Log("[SpeedLessonManager] Steering wheel popped up/restored for demo game.");
             }
 
             Destroy(classroomContainer);
