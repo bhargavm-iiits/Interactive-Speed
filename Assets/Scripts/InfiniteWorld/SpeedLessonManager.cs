@@ -514,8 +514,8 @@ namespace InfiniteWorld
             {
                 teacherGo = Instantiate(teacherPrefab, classroomContainer.transform);
                 teacherGo.name = "Teacher";
-                teacherGo.transform.localPosition = new Vector3(-1.8f, 0.0f, 3.8f);
-                teacherGo.transform.localRotation = Quaternion.Euler(0f, 150f, 0f); // Face slightly towards the student
+                teacherGo.transform.localPosition = new Vector3(1.8f, 0.0f, 3.8f);
+                teacherGo.transform.localRotation = Quaternion.Euler(0f, 210f, 0f); // Face slightly towards the student
                 teacherGo.transform.localScale = Vector3.one * 0.0254f; // Convert inches to meters for 1.8m height
 
                 Material teacherMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
@@ -550,17 +550,17 @@ namespace InfiniteWorld
             
             if (blackboardGo.name == "BlackboardFBX")
             {
-                boardTextGo.transform.localPosition = new Vector3(-1.4f, 2.75f, 4.12f);
-                boardTextGo.transform.localScale = Vector3.one * 0.014f;
+                boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.12f);
+                boardTextGo.transform.localScale = Vector3.one * 0.024f;
             }
             else
             {
-                boardTextGo.transform.localPosition = new Vector3(-1.4f, 2.75f, 4.1f);
-                boardTextGo.transform.localScale = Vector3.one * 0.014f;
+                boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.1f);
+                boardTextGo.transform.localScale = Vector3.one * 0.024f;
             }
 
             var tm = boardTextGo.AddComponent<TextMesh>();
-            tm.lineSpacing = 0.7f;
+            tm.lineSpacing = 0.65f;
             Font builtinFont = GetSafeBuiltinFont();
             if (builtinFont != null)
             {
@@ -581,7 +581,7 @@ namespace InfiniteWorld
             GameObject chalk = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             chalk.name = "ChalkPiece";
             chalk.transform.SetParent(boardTextGo.transform.parent, false);
-            chalk.transform.localScale = new Vector3(0.03f, 0.09f, 0.03f); // Scale up chalk to match larger text
+            chalk.transform.localScale = new Vector3(0.04f, 0.12f, 0.04f); // Scale up chalk to match larger text
             chalk.transform.localRotation = Quaternion.Euler(60f, 0f, 0f);
             var chalkMr = chalk.GetComponent<MeshRenderer>();
             var chalkMat = new Material(Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Standard"));
@@ -623,17 +623,14 @@ namespace InfiniteWorld
 
             // Speed definition text content
             string fullText = 
-                "SPEED\n\n" +
-                "Definition:\n" +
-                "Speed is the distance travelled by\n" +
-                "an object per unit time.\n\n" +
-                "SI Unit:\n" +
-                "metre per second (m/s)\n\n" +
-                "Formula:\n" +
-                "Speed = Distance \u00f7 Time\n\n" +
+                "SPEED\n" +
+                "Definition: Speed is the distance travelled\n" +
+                "by an object per unit time.\n" +
+                "SI Unit: metre per second (m/s)\n" +
+                "Formula: Speed = Distance \u00f7 Time\n" +
                 "Real-Life Example:\n" +
                 "A car moving on a highway at 60 km/h\n" +
-                "is an example of speed.\n\n" +
+                "is an example of speed.\n" +
                 "Key Point:\n" +
                 "Speed tells us how fast or slow\n" +
                 "an object is moving.";
@@ -677,18 +674,32 @@ namespace InfiniteWorld
             StartCoroutine(RunIntroSequence());
         }
 
+        private static float GetCharacterWidthFactor(char c)
+        {
+            switch (c)
+            {
+                case 'i': case 'l': case 't': case ' ': case 'j': case 'f': case 'r': case '1': case '.': case ',': case ';': case ':': case '!':
+                    return 0.3f;
+                case 'w': case 'm': case 'M': case 'W': case 'O': case 'Q': case 'G': case 'D': case 'H': case 'U': case 'N': case 'C':
+                    return 0.75f;
+                case 'S': case 'P': case 'E': case 'A': case 'B': case 'F': case 'K': case 'L': case 'R': case 'T': case 'V': case 'X': case 'Y': case 'Z':
+                    return 0.65f;
+                default:
+                    return 0.55f;
+            }
+        }
+
         private IEnumerator AnimateChalkWriting(TextMesh tm, GameObject chalk, string fullText, GameObject blackboardGo)
         {
             tm.text = "";
             chalk.SetActive(true);
 
             float scale = tm.transform.localScale.x;
-            float charWidth = 2.143f * scale;
             float lineHeight = 11.428f * tm.lineSpacing * scale;
 
             float chalkOffsetX = 0.03f * (scale / 0.007f);
             float chalkOffsetY = -0.03f * (scale / 0.007f);
-            float chalkOffsetZ = -0.01f;
+            float chalkOffsetZ = -0.06f; // Move closer to camera to ensure it is in front of the board
 
             string[] lines = fullText.Split('\n');
             string currentText = "";
@@ -706,16 +717,21 @@ namespace InfiniteWorld
                 }
 
                 float currentY = startPos.y - (l * lineHeight);
+                float accumulatedX = 0f;
 
                 for (int c = 0; c < line.Length; c++)
                 {
-                    currentText += line[c];
+                    char currentChar = line[c];
+                    currentText += currentChar;
                     tm.text = currentText;
 
-                    float currentX = startPos.x + (c * charWidth);
+                    float charWidthForC = GetCharacterWidthFactor(currentChar) * 3.9f * scale;
+                    float currentX = startPos.x + accumulatedX + (charWidthForC * 0.5f);
                     
                     // Position chalk slightly offset from character
                     chalk.transform.localPosition = new Vector3(currentX + chalkOffsetX, currentY + chalkOffsetY, startPos.z + chalkOffsetZ);
+
+                    accumulatedX += charWidthForC;
 
                     yield return new WaitForSeconds(Random.Range(0.015f, 0.035f));
                 }
@@ -1846,5 +1862,123 @@ namespace InfiniteWorld
             if (f == null) { try { f = Resources.GetBuiltinResource<Font>("Arial.ttf"); } catch { } }
             return f;
         }
+
+#if UNITY_EDITOR
+        private static GameObject _editorCoverGo;
+
+        [UnityEditor.InitializeOnLoadMethod]
+        private static void RegisterEditorCoverUpdate()
+        {
+            UnityEditor.EditorApplication.update -= EditorCoverUpdate;
+            UnityEditor.EditorApplication.update += EditorCoverUpdate;
+        }
+
+        private static void EditorCoverUpdate()
+        {
+            if (Application.isPlaying)
+            {
+                if (_editorCoverGo != null)
+                {
+                    DestroyImmediate(_editorCoverGo);
+                    _editorCoverGo = null;
+                }
+                // Also search for any existing ones in the scene just in case
+                var oldCover = GameObject.Find("EditorCoverImage");
+                if (oldCover != null)
+                {
+                    DestroyImmediate(oldCover);
+                }
+                return;
+            }
+
+            // In Edit Mode: Ensure the cover exists
+            if (_editorCoverGo == null)
+            {
+                _editorCoverGo = GameObject.Find("EditorCoverImage");
+            }
+
+            if (_editorCoverGo == null)
+            {
+                CreateEditorCover();
+            }
+            else
+            {
+                // Align with camera in case camera moved
+                AlignEditorCover();
+            }
+        }
+
+        private static void CreateEditorCover()
+        {
+            Camera camera = null;
+            var cams = GameObject.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            foreach (var c in cams)
+            {
+                if (c.CompareTag("MainCamera") || c.name == "Main Camera")
+                {
+                    camera = c;
+                    break;
+                }
+            }
+            if (camera == null && cams.Length > 0)
+            {
+                camera = cams[0];
+            }
+
+            if (camera == null) return;
+
+            Texture2D tex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/SpeedometerGrass.png");
+            if (tex == null) return;
+
+            _editorCoverGo = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            _editorCoverGo.name = "EditorCoverImage";
+            _editorCoverGo.hideFlags = HideFlags.DontSave;
+
+            var collider = _editorCoverGo.GetComponent<Collider>();
+            if (collider != null) DestroyImmediate(collider);
+
+            var mr = _editorCoverGo.GetComponent<MeshRenderer>();
+            var shader = Shader.Find("Universal Render Pipeline/Unlit") ?? Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
+            var mat = new Material(shader);
+            mat.mainTexture = tex;
+            mr.sharedMaterial = mat;
+
+            AlignEditorCover();
+        }
+
+        private static void AlignEditorCover()
+        {
+            if (_editorCoverGo == null) return;
+
+            Camera camera = null;
+            var cams = GameObject.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            foreach (var c in cams)
+            {
+                if (c.CompareTag("MainCamera") || c.name == "Main Camera")
+                {
+                    camera = c;
+                    break;
+                }
+            }
+            if (camera == null && cams.Length > 0)
+            {
+                camera = cams[0];
+            }
+
+            if (camera == null) return;
+
+            float dist = 0.5f; // Place 50cm in front of camera
+            _editorCoverGo.transform.position = camera.transform.position + camera.transform.forward * dist;
+            _editorCoverGo.transform.rotation = camera.transform.rotation;
+
+            // Scale to fill camera screen
+            float fovRad = camera.fieldOfView * Mathf.Deg2Rad;
+            float height = 2.0f * dist * Mathf.Tan(fovRad * 0.5f);
+            float width = height * camera.aspect;
+
+            // Make it slightly larger to prevent edge clipping
+            _editorCoverGo.transform.localScale = new Vector3(width * 1.15f, height * 1.15f, 1f);
+        }
+#endif
     }
 }
