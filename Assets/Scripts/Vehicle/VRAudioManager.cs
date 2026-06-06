@@ -67,6 +67,26 @@ namespace Vehicle
 
         private void Update()
         {
+            // Mute all car sounds in classroom or intro splash states
+            bool muteCarSounds = false;
+            if (InfiniteWorld.SpeedLessonManager.Instance != null)
+            {
+                var state = InfiniteWorld.SpeedLessonManager.Instance.currentState;
+                if (state == InfiniteWorld.SpeedLessonManager.LessonState.Classroom || 
+                    state == InfiniteWorld.SpeedLessonManager.LessonState.IntroSplash)
+                {
+                    muteCarSounds = true;
+                }
+            }
+
+            if (muteCarSounds)
+            {
+                if (engineSource != null) engineSource.volume = 0f;
+                if (windSource != null) windSource.volume = 0f;
+                if (tireSqueelSource != null) tireSqueelSource.volume = 0f;
+                return;
+            }
+
             if (car == null) return;
 
             float speed    = car.SpeedKmh;

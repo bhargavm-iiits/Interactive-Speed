@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace InfiniteWorld
 {
@@ -31,6 +32,13 @@ namespace InfiniteWorld
         {
             public float[] distances;
             public float[] times;
+        }
+
+        public struct LessonSection
+        {
+            public string header;
+            public string[] lines;
+            public string voiceoverFile;
         }
 
         private readonly LevelConfig[] _levels = new LevelConfig[]
@@ -113,6 +121,10 @@ namespace InfiniteWorld
         private GameObject _hologramContainer;
         private readonly List<GameObject> _hudObjects = new List<GameObject>();
         private bool _markersSpawned = false;
+        private TeacherRigController _teacherRig;
+        private AudioSource _audioSource;
+        private Dictionary<string, AudioClip> _cachedAudioClips = new Dictionary<string, AudioClip>();
+        private float _voiceoverEndTime = 0f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoBoot()
@@ -145,6 +157,13 @@ namespace InfiniteWorld
                 return;
             }
             Instance = this;
+
+            // Destroy editor cover immediately to prevent pink flash
+            var oldCover = GameObject.Find("EditorCoverImage");
+            if (oldCover != null)
+            {
+                DestroyImmediate(oldCover);
+            }
 
             // Remove duplicate AudioListeners
             DisableDuplicateAudioListeners();
@@ -193,6 +212,11 @@ namespace InfiniteWorld
 
         private void Update()
         {
+            if (_teacherRig != null && _audioSource != null)
+            {
+                _teacherRig.isSpeaking = _audioSource.isPlaying;
+            }
+
             if (!_markersSpawned && _driver != null && _driver.worldBuilder != null)
             {
                 _markersSpawned = true;
@@ -374,43 +398,30 @@ namespace InfiniteWorld
             _driver.Paused = true;
             _driver.automaticSpeedKmh = 0f;
 
-            // Wait a frame to ensure all Start() methods (like VRCockpitBuilder) have run and instantiated the steering wheel
-            yield return null;
-
-            // Find and hide steering wheel during classroom phase
-            Transform wheelPivot = null;
+            // Teleport vehicle immediately to classroom floor (Y = -200f) so that player is inside classroom on the first frame
             if (_driver != null)
             {
+                _driver.Z = 0f;
                 if (_driver.Car != null)
                 {
-                    wheelPivot = _driver.Car.Find("SteeringWheel_Pivot");
+                    _driver.Car.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
+                    _driver.Car.rotation = Quaternion.identity;
                 }
-                if (wheelPivot == null)
+                else
                 {
-                    wheelPivot = _driver.transform.Find("SteeringWheel_Pivot");
-                }
-                if (wheelPivot == null)
-                {
-                    var allTransforms = _driver.gameObject.GetComponentsInChildren<Transform>(true);
-                    foreach (var t in allTransforms)
-                    {
-                        if (t.name == "SteeringWheel_Pivot")
-                        {
-                            wheelPivot = t;
-                            break;
-                        }
-                    }
-                }
-
-                if (wheelPivot != null)
-                {
-                    wheelPivot.gameObject.SetActive(false);
-                    Debug.Log("[SpeedLessonManager] Steering wheel hidden during classroom phase.");
+                    _driver.transform.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
+                    _driver.transform.rotation = Quaternion.identity;
                 }
             }
 
             var classroomContainer = new GameObject("ClassroomContainer");
             classroomContainer.transform.position = new Vector3(0f, -200f, 0f);
+
+            _audioSource = classroomContainer.AddComponent<AudioSource>();
+            _audioSource.playOnAwake = false;
+            _audioSource.spatialBlend = 0f;
+
+            StartCoroutine(PreloadVoiceovers());
 
             Color wallCol = new Color(0.92f, 0.90f, 0.84f); // Warm beige
             Color floorCol = new Color(0.24f, 0.18f, 0.12f); // Dark wood
@@ -514,9 +525,9 @@ namespace InfiniteWorld
             {
                 teacherGo = Instantiate(teacherPrefab, classroomContainer.transform);
                 teacherGo.name = "Teacher";
-                teacherGo.transform.localPosition = new Vector3(1.8f, 0.0f, 3.8f);
+                teacherGo.transform.localPosition = new Vector3(2.2f, 0.0f, 3.8f);
                 teacherGo.transform.localRotation = Quaternion.Euler(0f, 210f, 0f); // Face slightly towards the student
-                teacherGo.transform.localScale = Vector3.one * 0.0254f; // Convert inches to meters for 1.8m height
+                teacherGo.transform.localScale = Vector3.one * 0.038f; // Scaled up (approx 1.5x larger)
 
                 Material teacherMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
                 Texture2D teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/source/man/textures/00208_Quint009_Diffuse.JPG");
@@ -539,29 +550,64 @@ namespace InfiniteWorld
                 {
                     r.sharedMaterial = teacherMat;
                 }
+                _teacherRig = teacherGo.AddComponent<TeacherRigController>();
+                _teacherRig.audioSource = _audioSource;
                 Debug.Log("[SpeedLessonManager] Instantiated teacher character model next to the blackboard.");
             }
 #endif
 
-            // Blackboard text
+            // Blackboard Title
+            var boardTitleGo = new GameObject("BlackboardTitle");
+            boardTitleGo.transform.SetParent(classroomContainer.transform, false);
+            boardTitleGo.transform.localRotation = Quaternion.identity;
+
+            Font builtinFont = GetSafeBuiltinFont();
+
+            if (blackboardGo.name == "BlackboardFBX")
+            {
+                boardTitleGo.transform.localPosition = new Vector3(0f, 4.35f, 4.12f);
+                boardTitleGo.transform.localScale = Vector3.one * 0.028f;
+            }
+            else
+            {
+                boardTitleGo.transform.localPosition = new Vector3(0f, 2.85f, 4.1f);
+                boardTitleGo.transform.localScale = Vector3.one * 0.016f;
+            }
+
+            var titleTm = boardTitleGo.AddComponent<TextMesh>();
+            titleTm.lineSpacing = 1.0f;
+            if (builtinFont != null)
+            {
+                titleTm.font = builtinFont;
+                var txtMat = new Material(Shader.Find("GUI/Text Shader") ?? Shader.Find("UI/Default"));
+                txtMat.mainTexture = builtinFont.material.mainTexture;
+                txtMat.color = Color.black;
+                boardTitleGo.GetComponent<MeshRenderer>().sharedMaterial = txtMat;
+            }
+            titleTm.fontSize = 72;
+            titleTm.fontStyle = FontStyle.Bold;
+            titleTm.anchor = TextAnchor.UpperCenter;
+            titleTm.alignment = TextAlignment.Center;
+            titleTm.color = Color.black;
+
+            // Blackboard Body Text
             var boardTextGo = new GameObject("BlackboardText");
             boardTextGo.transform.SetParent(classroomContainer.transform, false);
             boardTextGo.transform.localRotation = Quaternion.identity;
             
             if (blackboardGo.name == "BlackboardFBX")
             {
-                boardTextGo.transform.localPosition = new Vector3(-2.1f, 4.2f, 4.12f);
-                boardTextGo.transform.localScale = Vector3.one * 0.024f;
+                boardTextGo.transform.localPosition = new Vector3(-2.1f, 3.8f, 4.12f);
+                boardTextGo.transform.localScale = Vector3.one * 0.022f;
             }
             else
             {
-                boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.75f, 4.1f);
-                boardTextGo.transform.localScale = Vector3.one * 0.024f;
+                boardTextGo.transform.localPosition = new Vector3(-2.1f, 2.55f, 4.1f);
+                boardTextGo.transform.localScale = Vector3.one * 0.013f;
             }
 
             var tm = boardTextGo.AddComponent<TextMesh>();
             tm.lineSpacing = 1.0f;
-            Font builtinFont = GetSafeBuiltinFont();
             if (builtinFont != null)
             {
                 tm.font = builtinFont;
@@ -590,56 +636,76 @@ namespace InfiniteWorld
             Destroy(chalk.GetComponent<Collider>());
             chalk.SetActive(false);
 
-            // DEMO GAME button
+            // Hide steering wheel immediately on first frame
+            Transform wheelPivot = null;
+            System.Action hideWheelFn = () =>
+            {
+                if (_driver != null)
+                {
+                    if (_driver.Car != null) wheelPivot = _driver.Car.Find("SteeringWheel_Pivot");
+                    if (wheelPivot == null) wheelPivot = _driver.transform.Find("SteeringWheel_Pivot");
+                    if (wheelPivot == null)
+                    {
+                        var allTransforms = _driver.gameObject.GetComponentsInChildren<Transform>(true);
+                        foreach (var t in allTransforms)
+                        {
+                            if (t.name == "SteeringWheel_Pivot") { wheelPivot = t; break; }
+                        }
+                    }
+                    if (wheelPivot != null)
+                    {
+                        wheelPivot.gameObject.SetActive(false);
+                        Debug.Log("[SpeedLessonManager] Steering wheel hidden immediately.");
+                    }
+                }
+            };
+            hideWheelFn();
+
+            // Wait a frame to ensure all other Start() initializations across the scene have run
+            yield return null;
+
+            // Hide steering wheel again in case another Start method instantiated or enabled it
+            hideWheelFn();
+
+
+
+            // Speed definition text content (formatted with black headers and white descriptions, with spacing to fill board)
+            string titleText = "<color=black>SPEED</color>";
+            string bodyText = 
+                "<color=black>Definition :</color>\n" +
+                "<color=white>    - Speed is the distance traveled per unit time.</color>\n\n" +
+                "<color=black>Mathematical Form :</color>\n" +
+                "<color=white>    - v = d / t (where v = speed,</color>\n" +
+                "<color=white>      d = distance traveled, and t = time taken.)</color>\n\n" +
+                "<color=black>SI Unit :</color>\n" +
+                "<color=white>    - The SI unit of speed is metre per second (m/s).</color>\n" +
+                "<color=white>    - Other common units include km/h and mph.</color>\n\n" +
+                "<color=black>Example :</color>\n" +
+                "<color=white>    - A car traveling at 60 km/h moves 60 kilometers</color>\n" +
+                "<color=white>      in one hour.</color>\n" +
+                "<color=white>    - A runner covering 100 m in 10 s has a speed of 10 m/s.</color>\n\n" +
+                "<color=black>Key Points to Remember :</color>\n" +
+                "<color=white>    1. Speed is a scalar quantity.</color>\n" +
+                "<color=white>    2. Average speed uses total distance and total time.</color>\n" +
+                "<color=white>    3. Instantaneous speed is the speed at a specific moment.</color>\n" +
+                "<color=white>    4. Speed can change over time.</color>\n" +
+                "<color=white>    5. Speed and velocity are different.</color>";
+
+            // Run writing animation
+            yield return StartCoroutine(AnimateChalkWriting(titleTm, chalk, titleText, blackboardGo));
+            yield return StartCoroutine(AnimateChalkWriting(tm, chalk, bodyText, blackboardGo));
+
+            // Create and instantiate DEMO GAME button below the board
             var demoBtnGo = new GameObject("DemoGameBtn");
             demoBtnGo.transform.SetParent(classroomContainer.transform, false);
-            demoBtnGo.transform.localPosition = new Vector3(0f, 0.9f, 2.2f);
-            demoBtnGo.transform.localScale = Vector3.one * 1.5f;
+            demoBtnGo.transform.localPosition = new Vector3(0f, 0.9f, 3.4f);
+            demoBtnGo.transform.localScale = Vector3.one * 0.7f;
 
             var btn = demoBtnGo.AddComponent<HolographicButton>();
             btn.width = 1.8f;
             btn.height = 0.35f;
             btn.buttonText = "DEMO GAME";
             btn.textColor = NeonOrange;
-
-            // Teleport vehicle (align with Y = -200f floor)
-            if (_driver != null)
-            {
-                _driver.Z = 0f;
-                if (_driver.Car != null)
-                {
-                    _driver.Car.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
-                    _driver.Car.rotation = Quaternion.identity;
-                }
-                else
-                {
-                    _driver.transform.position = new Vector3(0f, -200f + _driver.groundOffset, -3.5f);
-                    _driver.transform.rotation = Quaternion.identity;
-                }
-            }
-
-            // Hide DEMO GAME button initially while writing
-            demoBtnGo.SetActive(false);
-
-            // Speed definition text content
-            string fullText = 
-                "SPEED\n" +
-                "Definition: Speed is the distance travelled\n" +
-                "by an object per unit time.\n" +
-                "SI Unit: metre per second (m/s)\n" +
-                "Formula: Speed = Distance \u00f7 Time\n" +
-                "Real-Life Example:\n" +
-                "A car moving on a highway at 60 km/h\n" +
-                "is an example of speed.\n" +
-                "Key Point:\n" +
-                "Speed tells us how fast or slow\n" +
-                "an object is moving.";
-
-            // Run writing animation
-            yield return StartCoroutine(AnimateChalkWriting(tm, chalk, fullText, blackboardGo));
-
-            // Reveal DEMO GAME button
-            demoBtnGo.SetActive(true);
 
             bool demoClicked = false;
             btn.OnClick = () => { demoClicked = true; };
@@ -679,69 +745,353 @@ namespace InfiniteWorld
             switch (c)
             {
                 case 'i': case 'l': case 't': case ' ': case 'j': case 'f': case 'r': case '1': case '.': case ',': case ';': case ':': case '!':
-                    return 0.3f;
+                     return 0.3f;
                 case 'w': case 'm': case 'M': case 'W': case 'O': case 'Q': case 'G': case 'D': case 'H': case 'U': case 'N': case 'C':
-                    return 0.75f;
+                     return 0.75f;
                 case 'S': case 'P': case 'E': case 'A': case 'B': case 'F': case 'K': case 'L': case 'R': case 'T': case 'V': case 'X': case 'Y': case 'Z':
-                    return 0.65f;
+                     return 0.65f;
                 default:
-                    return 0.55f;
+                     return 0.55f;
             }
+        }
+
+        private string StripHtmlTags(string html)
+        {
+            return System.Text.RegularExpressions.Regex.Replace(html, "<.*?>", string.Empty);
+        }
+
+        private string GetRichTextSubstring(string richText, int visibleCharCount)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            int visibleIdx = 0;
+            System.Collections.Generic.Stack<string> openTags = new System.Collections.Generic.Stack<string>();
+            int i = 0;
+
+            while (i < richText.Length && visibleIdx < visibleCharCount)
+            {
+                if (richText[i] == '<')
+                {
+                    int tagEnd = richText.IndexOf('>', i);
+                    if (tagEnd != -1)
+                    {
+                        string tag = richText.Substring(i, tagEnd - i + 1);
+                        sb.Append(tag);
+                        
+                        if (tag.StartsWith("</"))
+                        {
+                            if (openTags.Count > 0) openTags.Pop();
+                        }
+                        else if (!tag.EndsWith("/>"))
+                        {
+                            if (tag.StartsWith("<color", System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                openTags.Push("color");
+                            }
+                            else if (tag.StartsWith("<b>", System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                openTags.Push("b");
+                            }
+                            else if (tag.StartsWith("<i>", System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                openTags.Push("i");
+                            }
+                            else if (tag.StartsWith("<size", System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                openTags.Push("size");
+                            }
+                            else if (tag.StartsWith("<material", System.StringComparison.OrdinalIgnoreCase))
+                            {
+                                openTags.Push("material");
+                            }
+                        }
+                        i = tagEnd + 1;
+                    }
+                    else
+                    {
+                        sb.Append(richText[i]);
+                        visibleIdx++;
+                        i++;
+                    }
+                }
+                else
+                {
+                    sb.Append(richText[i]);
+                    if (richText[i] != '\n' && richText[i] != '\r')
+                    {
+                        visibleIdx++;
+                    }
+                    i++;
+                }
+            }
+
+            while (openTags.Count > 0)
+            {
+                sb.Append("</" + openTags.Pop() + ">");
+            }
+
+            return sb.ToString();
         }
 
         private IEnumerator AnimateChalkWriting(TextMesh tm, GameObject chalk, string fullText, GameObject blackboardGo)
         {
             tm.text = "";
             chalk.SetActive(true);
-
+ 
             float scale = tm.transform.localScale.x;
             float lineHeight = 10.0f * tm.lineSpacing * scale;
-
-            float chalkOffsetX = 0.03f * (scale / 0.007f);
-            float chalkOffsetY = -0.03f * (scale / 0.007f);
-            float chalkOffsetZ = -0.06f; // Move closer to camera to ensure it is in front of the board
-
-            string[] lines = fullText.Split('\n');
-            string currentText = "";
-
+ 
+            float chalkOffsetX = 0.002f * (scale / 0.007f); // Less than 1 cm offset to keep the tip right on the text
+            float chalkOffsetY = -0.002f * (scale / 0.007f);
+            float chalkOffsetZ = -0.015f; // Extremely close to the board surface
+ 
             Vector3 startPos = tm.transform.localPosition;
+            bool isCentered = (tm.anchor == TextAnchor.UpperCenter || tm.anchor == TextAnchor.MiddleCenter || tm.anchor == TextAnchor.LowerCenter);
+ 
+            // ── Section Parsing ──
+            List<LessonSection> sections = new List<LessonSection>();
+            string[] rawLines = fullText.Split('\n');
+            LessonSection currentSection = new LessonSection();
+            List<string> currentSectionLines = new List<string>();
 
-            for (int l = 0; l < lines.Length; l++)
+            for (int i = 0; i < rawLines.Length; i++)
             {
-                string line = lines[l];
-                
-                if (l > 0)
+                string line = rawLines[i];
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                if (line.Contains("<color=black>"))
                 {
-                    currentText += "\n";
-                    tm.text = currentText;
+                    // If we already have a section, save it
+                    if (!string.IsNullOrEmpty(currentSection.header))
+                    {
+                        currentSection.lines = currentSectionLines.ToArray();
+                        sections.Add(currentSection);
+                    }
+
+                    // Start a new section
+                    currentSection = new LessonSection();
+                    currentSection.header = line;
+                    currentSectionLines = new List<string>();
+
+                    // Match voiceover file
+                    if (line.Contains("Definition :")) currentSection.voiceoverFile = "VO_Definition.wav";
+                    else if (line.Contains("Mathematical Form :")) currentSection.voiceoverFile = "VO_MathForm.wav";
+                    else if (line.Contains("SI Unit :")) currentSection.voiceoverFile = "VO_SIUnit.wav";
+                    else if (line.Contains("Example :")) currentSection.voiceoverFile = "VO_Example.wav";
+                    else if (line.Contains("Key Points to Remember :")) currentSection.voiceoverFile = "VO_KeyPoints.wav";
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(currentSection.header))
+                    {
+                        // Fallback for lines before any header (like the Title)
+                        currentSection.header = line;
+                    }
+                    else
+                    {
+                        currentSectionLines.Add(line);
+                    }
+                }
+            }
+
+            // Save the last section
+            if (!string.IsNullOrEmpty(currentSection.header))
+            {
+                currentSection.lines = currentSectionLines.ToArray();
+                sections.Add(currentSection);
+            }
+
+            int linesWrittenOnCurrentScreen = 0;
+            string currentScreenRichText = "";
+            int currentScreenVisibleChars = 0;
+            float bottomLimitY = (blackboardGo.name == "BlackboardFBX") ? 1.0f : 0.8f;
+
+            foreach (var section in sections)
+            {
+                // Wait for the previous section's voiceover to finish playing before starting the next section (with safety timeout)
+                if (_audioSource != null && Time.time < _voiceoverEndTime)
+                {
+                    chalk.SetActive(false);
+                    while (_audioSource.isPlaying && Time.time < _voiceoverEndTime)
+                    {
+                        yield return null;
+                    }
+                    chalk.SetActive(true);
                 }
 
-                float currentY = startPos.y - (l * lineHeight);
-                float accumulatedX = 0f;
-
-                for (int c = 0; c < line.Length; c++)
+                // 1. Calculate total characters in this section to know when we hit the 1/4th point
+                int totalSectionChars = StripHtmlTags(section.header).Length;
+                foreach (var line in section.lines)
                 {
-                    char currentChar = line[c];
-                    currentText += currentChar;
-                    tm.text = currentText;
+                    totalSectionChars += StripHtmlTags(line).Length;
+                }
+                int quarterTarget = totalSectionChars / 4;
+                int writtenSectionChars = 0;
+                bool voiceoverTriggered = false;
 
-                    float charWidthForC = GetCharacterWidthFactor(currentChar) * 4.6f * scale;
-                    float currentX = startPos.x + accumulatedX + (charWidthForC * 0.5f);
-                    
-                    // Position chalk slightly offset from character
-                    chalk.transform.localPosition = new Vector3(currentX + chalkOffsetX, currentY + chalkOffsetY, startPos.z + chalkOffsetZ);
+                // 2. Prepare all lines in this section (header + lines)
+                List<string> sectionLines = new List<string>();
+                sectionLines.Add(section.header);
+                sectionLines.AddRange(section.lines);
 
-                    accumulatedX += charWidthForC;
+                // 3. Write each line of the section
+                for (int l = 0; l < sectionLines.Count; l++)
+                {
+                    string richLine = sectionLines[l];
+                    string plainLine = StripHtmlTags(richLine);
 
-                    yield return new WaitForSeconds(Random.Range(0.015f, 0.035f));
+                    // Calculate vertical position of the line on the current screen
+                    float currentLineY = startPos.y - (linesWrittenOnCurrentScreen * lineHeight);
+
+                    // If line exceeds the board height, pause, clear, and start from the top
+                    if (currentLineY < bottomLimitY && linesWrittenOnCurrentScreen > 0)
+                    {
+                        chalk.SetActive(false);
+                        yield return new WaitForSeconds(2.5f); // Let student read before clearing
+                        tm.text = "";
+                        currentScreenRichText = "";
+                        currentScreenVisibleChars = 0;
+                        linesWrittenOnCurrentScreen = 0;
+                        currentLineY = startPos.y;
+                        chalk.SetActive(true);
+                    }
+
+                    if (linesWrittenOnCurrentScreen > 0)
+                    {
+                        currentScreenRichText += "\n";
+                    }
+                    currentScreenRichText += richLine;
+
+                    float accumulatedX = 0f;
+
+                    if (isCentered)
+                    {
+                        float totalLineWidth = 0f;
+                        foreach (char c in plainLine)
+                        {
+                            totalLineWidth += GetCharacterWidthFactor(c) * 4.6f * scale;
+                        }
+                        accumulatedX = -totalLineWidth * 0.5f;
+                    }
+
+                    // Write character-by-character (accelerated by writing 8 characters per frame)
+                    int charsPerFrame = 8;
+                    for (int c = 0; c < plainLine.Length; c += charsPerFrame)
+                    {
+                        int charsToWrite = Mathf.Min(charsPerFrame, plainLine.Length - c);
+                        
+                        // Move chalk to the position of the character being written
+                        float charWidthForC = GetCharacterWidthFactor(plainLine[c]) * 4.6f * scale;
+                        float currentX = startPos.x + accumulatedX + (charWidthForC * 0.5f);
+                        chalk.transform.localPosition = new Vector3(currentX + chalkOffsetX, currentLineY + chalkOffsetY, startPos.z + chalkOffsetZ);
+
+                        currentScreenVisibleChars += charsToWrite;
+                        tm.text = GetRichTextSubstring(currentScreenRichText, currentScreenVisibleChars);
+
+                        // Update accumulated X
+                        for (int k = 0; k < charsToWrite; k++)
+                        {
+                            accumulatedX += GetCharacterWidthFactor(plainLine[c + k]) * 4.6f * scale;
+                        }
+
+                        writtenSectionChars += charsToWrite;
+
+                        // Check if we reached the 1/4th point to trigger the voiceover
+                        if (!voiceoverTriggered && writtenSectionChars >= quarterTarget && !string.IsNullOrEmpty(section.voiceoverFile))
+                        {
+                            voiceoverTriggered = true;
+                            StartCoroutine(PlaySectionVoiceover(section.voiceoverFile));
+                        }
+
+                        yield return null; // Wait 1 frame
+                    }
+
+                    linesWrittenOnCurrentScreen++;
+
+                    chalk.SetActive(false);
+                    yield return new WaitForSeconds(0.02f); // small delay between lines
+                    chalk.SetActive(true);
                 }
 
-                chalk.SetActive(false);
-                yield return new WaitForSeconds(0.4f);
-                chalk.SetActive(true);
+                // Add an extra empty line spacing in the screen buffer if we're not at the last section
+                if (section.header != sections[sections.Count - 1].header)
+                {
+                    currentScreenRichText += "\n";
+                    linesWrittenOnCurrentScreen++;
+                }
             }
 
             chalk.SetActive(false);
+        }
+
+        private IEnumerator PlaySectionVoiceover(string fileName)
+        {
+            if (_audioSource == null) yield break;
+
+            _audioSource.Stop();
+
+            if (_cachedAudioClips.TryGetValue(fileName, out AudioClip clip))
+            {
+                _audioSource.clip = clip;
+                _audioSource.Play();
+                _voiceoverEndTime = Time.time + clip.length;
+                Debug.Log($"[SpeedLessonManager] Playing cached voiceover: {fileName} (expected duration: {clip.length}s)");
+            }
+            else
+            {
+                // Fallback to load on the fly if not cached
+                string path = System.IO.Path.Combine(Application.dataPath, "Audio", fileName);
+                string url = "file:///" + path.Replace("\\", "/");
+
+                using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
+                {
+                    yield return www.SendWebRequest();
+                    if (www.result == UnityWebRequest.Result.Success)
+                    {
+                        AudioClip loadedClip = DownloadHandlerAudioClip.GetContent(www);
+                        _cachedAudioClips[fileName] = loadedClip;
+                        _audioSource.clip = loadedClip;
+                        _audioSource.Play();
+                        _voiceoverEndTime = Time.time + loadedClip.length;
+                        Debug.Log($"[SpeedLessonManager] Loaded and playing voiceover on-the-fly: {fileName} (expected duration: {loadedClip.length}s)");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[SpeedLessonManager] Failed to load voiceover on-the-fly {fileName}: {www.error}");
+                    }
+                }
+            }
+        }
+
+        private IEnumerator PreloadVoiceovers()
+        {
+            string[] files = new string[] {
+                "VO_Definition.wav",
+                "VO_MathForm.wav",
+                "VO_SIUnit.wav",
+                "VO_Example.wav",
+                "VO_KeyPoints.wav"
+            };
+
+            foreach (var file in files)
+            {
+                string path = System.IO.Path.Combine(Application.dataPath, "Audio", file);
+                string url = "file:///" + path.Replace("\\", "/");
+
+                using (UnityWebRequest www = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
+                {
+                    yield return www.SendWebRequest();
+                    if (www.result == UnityWebRequest.Result.Success)
+                    {
+                        AudioClip clip = DownloadHandlerAudioClip.GetContent(www);
+                        _cachedAudioClips[file] = clip;
+                        Debug.Log($"[SpeedLessonManager] Preloaded voiceover: {file}");
+                    }
+                    else
+                    {
+                        Debug.LogError($"[SpeedLessonManager] Failed to preload voiceover {file}: {www.error}");
+                    }
+                }
+            }
         }
 
         // ── 0. INTRO SPLASH ───────────────────────────────────────────────────

@@ -45,6 +45,19 @@ public class VRBackendConnector : MonoBehaviour
     // INITIALIZATION & SESSION CONTROL
     // ================================================================
     
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void AutoBoot()
+    {
+        var connector = FindFirstObjectByType<VRBackendConnector>();
+        if (connector == null)
+        {
+            GameObject backendManager = new GameObject("BackendManager");
+            connector = backendManager.AddComponent<VRBackendConnector>();
+            DontDestroyOnLoad(backendManager);
+            Debug.Log("[BackendConnector] Auto-bootstrapped BackendManager GameObject and VRBackendConnector component.");
+        }
+    }
+
     private void Start()
     {
         if (connectionStatusUI == null)
@@ -113,13 +126,21 @@ public class VRBackendConnector : MonoBehaviour
                     studentId = result.student_id;
                     
                     // Highly visible console window pop-up message
-                    Debug.Log("\n========================================================================\n" +
+                    Debug.Log("<color=#00FFCC><b>\n========================================================================\n" +
                               "  🔌 [UNITY VR BACKEND] CONNECTION OPEN AND ESTABLISHED!\n" +
                               "  ------------------------------------------------------------------------\n" +
                               "  Status: SUCCESS | Link to FastAPI Multi-Agent server is Active.\n" +
                               "  Server Address: " + baseUrl + "\n" +
                               "  Registered Student ID: " + studentId + " (" + name + ")\n" +
-                              "========================================================================\n");
+                              "========================================================================\n</b></color>");
+                              
+#if UNITY_EDITOR
+                    UnityEditor.EditorUtility.DisplayDialog(
+                        "Backend Connected",
+                        $"Registered Student: {name}\nStudent ID: {studentId}\nBackend Server: {baseUrl}",
+                        "OK"
+                    );
+#endif
                               
                     if (connectionStatusUI != null)
                         connectionStatusUI.ShowSuccess($"Student '{name}' Created");
@@ -396,27 +417,43 @@ public class VRBackendConnector : MonoBehaviour
             if (request.result == UnityWebRequest.Result.Success)
             {
                 isConnected = true;
-                Debug.Log("\n========================================================================\n" +
+                Debug.Log("<color=#00FFCC><b>\n========================================================================\n" +
                           "  🔌 [UNITY VR BACKEND] CONNECTION OPEN AND ESTABLISHED!\n" +
                           "  ------------------------------------------------------------------------\n" +
                           "  Status: SUCCESS | Link to FastAPI Multi-Agent server is Active.\n" +
                           "  Server Address: " + baseUrl + "\n" +
-                          "========================================================================\n");
+                          "========================================================================\n</b></color>");
                 
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.DisplayDialog(
+                    "Backend Connected",
+                    $"Successfully connected to FastAPI Backend!\n\nBackend Server: {baseUrl}",
+                    "OK"
+                );
+#endif
+
                 if (connectionStatusUI != null)
                     connectionStatusUI.ShowConnected($"✅ Connected to {baseUrl}");
             }
             else
             {
                 isConnected = false;
-                Debug.LogError("\n========================================================================\n" +
+                Debug.LogError("<color=#FF3366><b>\n========================================================================\n" +
                                "  ❌ [UNITY VR BACKEND] CONNECTION FAILED!\n" +
                                "  ------------------------------------------------------------------------\n" +
                                "  Status: ERROR | Could not link to FastAPI Multi-Agent server.\n" +
                                "  Server Address: " + baseUrl + "\n" +
                                "  Error: " + request.error + "\n" +
-                               "========================================================================\n");
+                               "========================================================================\n</b></color>");
                 
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.DisplayDialog(
+                    "Backend Connection Failed",
+                    $"Unable to reach the FastAPI Backend!\n\nBackend Server: {baseUrl}\nError: {request.error}\n\nPlease check if backend server is running.",
+                    "OK"
+                );
+#endif
+
                 if (connectionStatusUI != null)
                     connectionStatusUI.ShowError($"Backend unreachable: {baseUrl}");
             }

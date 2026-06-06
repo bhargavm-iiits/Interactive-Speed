@@ -22,6 +22,19 @@ public class EnhancedVRBackendConnector : MonoBehaviour
     public event Action<string> OnError;
     public event Action<string> OnConnectionEstablished;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void AutoBoot()
+    {
+        var connector = FindFirstObjectByType<EnhancedVRBackendConnector>();
+        if (connector == null)
+        {
+            GameObject backendManager = new GameObject("EnhancedBackendManager");
+            connector = backendManager.AddComponent<EnhancedVRBackendConnector>();
+            DontDestroyOnLoad(backendManager);
+            Debug.Log("[BackendConnector] Auto-bootstrapped EnhancedBackendManager GameObject and EnhancedVRBackendConnector component.");
+        }
+    }
+
     void Start()
     {
         // Auto-find ConnectionStatusUI if not assigned
@@ -56,7 +69,20 @@ public class EnhancedVRBackendConnector : MonoBehaviour
                     connectionStatusUI.ShowConnected($"✅ Connected to {serverURL}");
                 
                 OnConnectionEstablished?.Invoke("Backend connection established");
-                Debug.Log("[Backend] Connection established with " + serverURL);
+                Debug.Log("<color=#00FFCC><b>\n========================================================================\n" +
+                          "  🔌 [UNITY VR BACKEND] CONNECTION OPEN AND ESTABLISHED!\n" +
+                          "  ------------------------------------------------------------------------\n" +
+                          "  Status: SUCCESS | Link to FastAPI Multi-Agent server is Active.\n" +
+                          "  Server Address: " + serverURL + "\n" +
+                          "========================================================================\n</b></color>");
+
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.DisplayDialog(
+                    "Backend Connected",
+                    $"Successfully connected to FastAPI Backend!\n\nBackend Server: {serverURL}",
+                    "OK"
+                );
+#endif
             }
             else
             {
@@ -64,7 +90,21 @@ public class EnhancedVRBackendConnector : MonoBehaviour
                     connectionStatusUI.ShowError($"❌ Failed to connect: {request.error}");
                 
                 OnError?.Invoke(request.error);
-                Debug.LogError("[Backend] Connection failed: " + request.error);
+                Debug.LogError("<color=#FF3366><b>\n========================================================================\n" +
+                               "  ❌ [UNITY VR BACKEND] CONNECTION FAILED!\n" +
+                               "  ------------------------------------------------------------------------\n" +
+                               "  Status: ERROR | Could not link to FastAPI Multi-Agent server.\n" +
+                               "  Server Address: " + serverURL + "\n" +
+                               "  Error: " + request.error + "\n" +
+                               "========================================================================\n</b></color>");
+
+#if UNITY_EDITOR
+                UnityEditor.EditorUtility.DisplayDialog(
+                    "Backend Connection Failed",
+                    $"Unable to reach the FastAPI Backend!\n\nBackend Server: {serverURL}\nError: {request.error}\n\nPlease check if backend server is running.",
+                    "OK"
+                );
+#endif
             }
         }
     }
