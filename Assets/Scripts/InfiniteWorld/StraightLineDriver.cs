@@ -94,6 +94,16 @@ namespace InfiniteWorld
         private UnityEngine.XR.InputDevice _leftHandDevice;
         private UnityEngine.XR.InputDevice _rightHandDevice;
 
+        // Action-Based VR Inputs (Quest 3 / OpenXR)
+        private bool _isVRActive;
+        private InputAction _throttleAction;
+        private InputAction _brakeAction;
+        private InputAction _steerAction;
+        private InputAction _reverseAction;
+        private InputAction _pauseAction;
+        private GameObject _leftControllerVisual;
+        private GameObject _rightControllerVisual;
+
         // Steering wheel visual angle (smooth)
         private float _wheelAngle;
 
@@ -159,6 +169,13 @@ namespace InfiniteWorld
             _z   = 0f;
             _yaw = transform.eulerAngles.y;
             Cursor.lockState = CursorLockMode.Confined;
+
+            // Detect if VR is active (HMD connected)
+            _isVRActive = (UnityEngine.InputSystem.XR.XRHMD.current != null) || UnityEngine.XR.XRSettings.isDeviceActive;
+            Debug.Log($"[StraightLineDriver] VR Active state: {_isVRActive}");
+
+            // Setup VR input actions
+            SetupVRActions();
 
             SetupCar();
             EnsureTreeColliders();
@@ -258,6 +275,9 @@ namespace InfiniteWorld
 
         private void SitInsideCar()
         {
+            // First, ensure the XR Origin rig exists and camera is parented correctly
+            EnsureXROrigin();
+
             // Walk up from Main Camera, but STOP at the direct child of VRCar
             // so _xrRoot = XR Origin (not VRCar itself)
             _xrRoot = transform;
@@ -268,8 +288,11 @@ namespace InfiniteWorld
             Transform curr = transform;
             while (curr != null && curr != _xrRoot)
             {
-                curr.localPosition = Vector3.zero;
-                curr.localRotation = Quaternion.identity;
+                if (curr != transform || !_isVRActive)
+                {
+                    curr.localPosition = Vector3.zero;
+                    curr.localRotation = Quaternion.identity;
+                }
                 curr = curr.parent;
             }
 
@@ -289,8 +312,11 @@ namespace InfiniteWorld
             Transform curr = transform;
             while (curr != null && curr != _xrRoot)
             {
-                curr.localPosition = Vector3.zero;
-                curr.localRotation = Quaternion.identity;
+                if (curr != transform || !_isVRActive)
+                {
+                    curr.localPosition = Vector3.zero;
+                    curr.localRotation = Quaternion.identity;
+                }
                 curr = curr.parent;
             }
 
@@ -399,27 +425,47 @@ namespace InfiniteWorld
                 }
             }
 
-            // VR Input
+            // VR Input (Dynamic Action-based or legacy fallback)
             float vrThrottle = 0f;
             float vrBrake = 0f;
             float vrSteer = 0f;
 
-            if (_rightHandDevice.isValid)
+            if (_throttleAction != null) vrThrottle = _throttleAction.ReadValue<float>();
+            if (_brakeAction != null) vrBrake = _brakeAction.ReadValue<float>();
+            if (_steerAction != null) vrSteer = _steerAction.ReadValue<float>();
+
+            // Controller Reverse gear toggle
+            if (_reverseAction != null && _reverseAction.triggered)
+            {
+                _reverse = !_reverse;
+            }
+
+            // Controller Pause toggle
+            if (_pauseAction != null && _pauseAction.triggered)
+            {
+                if (SpeedLessonManager.Instance == null || SpeedLessonManager.Instance.currentState != SpeedLessonManager.LessonState.IntroSplash)
+                {
+                    _paused = !_paused;
+                }
+            }
+
+            // Legacy XR device queries as fallback
+            if (vrThrottle < 0.01f && _rightHandDevice.isValid)
             {
                 _rightHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out vrThrottle);
                 Vector2 stick;
                 if (_rightHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out stick))
                 {
-                    if (Mathf.Abs(stick.x) > 0.05f) vrSteer = stick.x;
+                    if (Mathf.Abs(stick.x) > 0.05f && Mathf.Abs(vrSteer) < 0.01f) vrSteer = stick.x;
                 }
             }
-            if (_leftHandDevice.isValid)
+            if (vrBrake < 0.01f && _leftHandDevice.isValid)
             {
                 _leftHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trigger, out vrBrake);
                 Vector2 stick;
                 if (_leftHandDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primary2DAxis, out stick))
                 {
-                    if (Mathf.Abs(stick.x) > 0.05f) vrSteer = stick.x;
+                    if (Mathf.Abs(stick.x) > 0.05f && Mathf.Abs(vrSteer) < 0.01f) vrSteer = stick.x;
                 }
             }
 
@@ -1275,6 +1321,202 @@ namespace InfiniteWorld
             if (_pedalBgTex != null) Destroy(_pedalBgTex);
             if (_pedalFillBrakeTex != null) Destroy(_pedalFillBrakeTex);
             if (_pedalFillAccelTex != null) Destroy(_pedalFillAccelTex);
+
+            _throttleAction?.Disable();
+            _brakeAction?.Disable();
+            _steerAction?.Disable();
+            _reverseAction?.Disable();
+            _pauseAction?.Disable();
+        }
+
+        private void SetupVRActions()
+        {
+            try
+            {
+                _throttleAction = new InputAction("Throttle", binding: "<XRController>{RightHand}/trigger");
+                _brakeAction = new InputAction("Brake", binding: "<XRController>{LeftHand}/trigger");
+                
+                _steerAction = new InputAction("Steer");
+                _steerAction.AddBinding("<XRController>{LeftHand}/thumbstick/x");
+                _steerAction.AddBinding("<XRController>{RightHand}/thumbstick/x");
+
+                _reverseAction = new InputAction("Reverse", binding: "<XRController>{RightHand}/primaryButton");
+                _pauseAction = new InputAction("Pause", binding: "<XRController>{LeftHand}/menuButton");
+
+                _throttleAction.Enable();
+                _brakeAction.Enable();
+                _steerAction.Enable();
+                _reverseAction.Enable();
+                _pauseAction.Enable();
+
+                Debug.Log("[StraightLineDriver] Action-based VR inputs initialized and enabled.");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[StraightLineDriver] Failed to initialize VR Input Actions: {ex.Message}");
+            }
+        }
+
+        private void EnsureXROrigin()
+        {
+            if (transform.parent != null && transform.parent.name == "Camera Offset")
+            {
+                _xrRoot = transform.parent.parent;
+                EnsureTrackedPoseDriver();
+                return;
+            }
+
+            GameObject xrOriginGO = new GameObject("XR Origin");
+            _xrRoot = xrOriginGO.transform;
+            _xrRoot.SetParent(_car, false);
+            _xrRoot.localPosition = driverEyeLocalPos;
+            _xrRoot.localRotation = Quaternion.identity;
+
+            GameObject cameraOffsetGO = new GameObject("Camera Offset");
+            Transform cameraOffset = cameraOffsetGO.transform;
+            cameraOffset.SetParent(_xrRoot, false);
+            cameraOffset.localPosition = Vector3.zero;
+            cameraOffset.localRotation = Quaternion.identity;
+
+            transform.SetParent(cameraOffset, false);
+            transform.localPosition = Vector3.zero;
+            transform.localRotation = Quaternion.identity;
+
+            var xrOriginType = System.Type.GetType("Unity.XR.CoreUtils.XROrigin, Unity.XR.CoreUtils");
+            if (xrOriginType != null)
+            {
+                var xrOriginComp = xrOriginGO.AddComponent(xrOriginType);
+                try
+                {
+                    xrOriginType.GetProperty("CameraFloorOffsetObject")?.SetValue(xrOriginComp, cameraOffsetGO);
+                    xrOriginType.GetProperty("XRCamera")?.SetValue(xrOriginComp, GetComponent<Camera>());
+                    Debug.Log("[StraightLineDriver] Dynamic XROrigin component added and configured.");
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[StraightLineDriver] Failed configuring dynamic XROrigin: {ex.Message}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("[StraightLineDriver] Unity.XR.CoreUtils.XROrigin type not found. Running in fallback rig mode.");
+            }
+
+            EnsureTrackedPoseDriver();
+            SetupControllerVisuals(cameraOffset);
+        }
+
+        private void EnsureTrackedPoseDriver()
+        {
+            var tpd = GetComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+            if (tpd == null)
+            {
+                var legacyTpd = GetComponent("UnityEngine.SpatialTracking.TrackedPoseDriver");
+                if (legacyTpd == null)
+                {
+                    tpd = gameObject.AddComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+                    tpd.positionInput = new InputActionProperty(new InputAction("Position", binding: "<XRHMD>/centerEyePosition"));
+                    tpd.rotationInput = new InputActionProperty(new InputAction("Rotation", binding: "<XRHMD>/centerEyeRotation"));
+                    tpd.trackingStateInput = new InputActionProperty(new InputAction("TrackingState", binding: "<XRHMD>/trackingState"));
+                    tpd.positionInput.action.Enable();
+                    tpd.rotationInput.action.Enable();
+                    tpd.trackingStateInput.action.Enable();
+                    Debug.Log("[StraightLineDriver] Added TrackedPoseDriver with centerEye bindings to Main Camera.");
+                }
+            }
+        }
+
+        private void SetupControllerVisuals(Transform cameraOffset)
+        {
+            if (cameraOffset == null) return;
+
+            try
+            {
+                GameObject leftHandGO = new GameObject("VR_Left_Hand");
+                leftHandGO.transform.SetParent(cameraOffset, false);
+                var leftTPD = leftHandGO.AddComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+                leftTPD.positionInput = new InputActionProperty(new InputAction("LeftHandPosition", binding: "<XRController>{LeftHand}/devicePosition"));
+                leftTPD.rotationInput = new InputActionProperty(new InputAction("LeftHandRotation", binding: "<XRController>{LeftHand}/deviceRotation"));
+                leftTPD.trackingStateInput = new InputActionProperty(new InputAction("LeftHandTrackingState", binding: "<XRController>{LeftHand}/trackingState"));
+                leftTPD.positionInput.action.Enable();
+                leftTPD.rotationInput.action.Enable();
+                leftTPD.trackingStateInput.action.Enable();
+
+                BuildControllerVisuals(leftHandGO.transform, true);
+                _leftControllerVisual = leftHandGO;
+
+                GameObject rightHandGO = new GameObject("VR_Right_Hand");
+                rightHandGO.transform.SetParent(cameraOffset, false);
+                var rightTPD = rightHandGO.AddComponent<UnityEngine.InputSystem.XR.TrackedPoseDriver>();
+                rightTPD.positionInput = new InputActionProperty(new InputAction("RightHandPosition", binding: "<XRController>{RightHand}/devicePosition"));
+                rightTPD.rotationInput = new InputActionProperty(new InputAction("RightHandRotation", binding: "<XRController>{RightHand}/deviceRotation"));
+                rightTPD.trackingStateInput = new InputActionProperty(new InputAction("RightHandTrackingState", binding: "<XRController>{RightHand}/trackingState"));
+                rightTPD.positionInput.action.Enable();
+                rightTPD.rotationInput.action.Enable();
+                rightTPD.trackingStateInput.action.Enable();
+
+                BuildControllerVisuals(rightHandGO.transform, false);
+                _rightControllerVisual = rightHandGO;
+
+                Debug.Log("[StraightLineDriver] Dynamic Left & Right VR controller visual trackers created.");
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"[StraightLineDriver] Error setting up VR controller visuals: {ex.Message}");
+            }
+        }
+
+        private void BuildControllerVisuals(Transform parent, bool isLeft)
+        {
+            var bodyMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+            bodyMat.color = new Color(0.92f, 0.92f, 0.95f);
+            bodyMat.SetFloat("_Roughness", 0.4f);
+
+            var faceplateMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
+            faceplateMat.color = new Color(0.12f, 0.12f, 0.14f);
+            faceplateMat.SetFloat("_Roughness", 0.3f);
+
+            var grip = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            grip.name = "Grip";
+            grip.transform.SetParent(parent, false);
+            grip.transform.localScale = new Vector3(0.025f, 0.06f, 0.025f);
+            grip.transform.localPosition = new Vector3(0f, -0.04f, -0.02f);
+            grip.transform.localRotation = Quaternion.Euler(35f, 0f, 0f);
+            grip.GetComponent<Renderer>().material = bodyMat;
+            Destroy(grip.GetComponent<Collider>());
+
+            var face = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            face.name = "Faceplate";
+            face.transform.SetParent(parent, false);
+            face.transform.localPosition = new Vector3(0f, 0.015f, 0.005f);
+            face.transform.localScale = new Vector3(0.04f, 0.012f, 0.05f);
+            face.transform.localRotation = Quaternion.Euler(15f, 0f, 0f);
+            face.GetComponent<Renderer>().material = faceplateMat;
+            Destroy(face.GetComponent<Collider>());
+
+            var thumbstick = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            thumbstick.name = "Thumbstick";
+            thumbstick.transform.SetParent(face.transform, false);
+            thumbstick.transform.localPosition = new Vector3(isLeft ? 0.2f : -0.2f, 0.5f, 0.15f);
+            thumbstick.transform.localScale = new Vector3(0.22f, 0.4f, 0.22f);
+            thumbstick.GetComponent<Renderer>().material = faceplateMat;
+            Destroy(thumbstick.GetComponent<Collider>());
+
+            var button1 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            button1.name = "Button_Lower";
+            button1.transform.SetParent(face.transform, false);
+            button1.transform.localPosition = new Vector3(isLeft ? -0.2f : 0.2f, 0.5f, -0.2f);
+            button1.transform.localScale = new Vector3(0.18f, 0.18f, 0.18f);
+            button1.GetComponent<Renderer>().material = faceplateMat;
+            Destroy(button1.GetComponent<Collider>());
+
+            var button2 = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            button2.name = "Button_Upper";
+            button2.transform.SetParent(face.transform, false);
+            button2.transform.localPosition = new Vector3(isLeft ? -0.2f : 0.2f, 0.5f, 0.1f);
+            button2.transform.localScale = new Vector3(0.18f, 0.18f, 0.18f);
+            button2.GetComponent<Renderer>().material = faceplateMat;
+            Destroy(button2.GetComponent<Collider>());
         }
 
 #if UNITY_EDITOR
