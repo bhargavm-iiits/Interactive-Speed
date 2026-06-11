@@ -1,0 +1,13 @@
+FBX Hierarchy:
+- Bear.001 (Active: True)
+- Boar_Lower (Active: True)
+- Boar_Lower.001 (Active: True)
+- Boar_M_Fur.001 (Active: True)
+- Boar_Upper (Active: True)
+- Boar_Upper.001 (Active: True)
+- Deer_Antler (Active: True)
+- Deer_M.001 (Active: True)
+- Fox.001 (Active: True)
+- Moose.001 (Active: True)
+- Rabbit.001 (Active: True)
+- Wolf.001 (Active: True)

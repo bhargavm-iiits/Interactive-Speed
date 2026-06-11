@@ -125,6 +125,7 @@ namespace InfiniteWorld
         private AudioSource _audioSource;
         private Dictionary<string, AudioClip> _cachedAudioClips = new Dictionary<string, AudioClip>();
         private float _voiceoverEndTime = 0f;
+        private bool _skipClassroom = false;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoBoot()
@@ -212,6 +213,15 @@ namespace InfiniteWorld
 
         private void Update()
         {
+            if (currentState == LessonState.Classroom)
+            {
+                var kb = UnityEngine.InputSystem.Keyboard.current;
+                if (kb != null)
+                {
+                    try { if (kb.spaceKey.wasPressedThisFrame) _skipClassroom = true; } catch { }
+                }
+            }
+
             if (_teacherRig != null && _audioSource != null)
             {
                 _teacherRig.isSpeaking = _audioSource.isPlaying;
@@ -517,34 +527,29 @@ namespace InfiniteWorld
                 Destroy(frame.GetComponent<Collider>());
             }
 
-            // Instantiate teacher character next to the blackboard (scaled appropriately for inches-to-meters)
+            // Instantiate teacher character next to the blackboard
             GameObject teacherGo = null;
 #if UNITY_EDITOR
-            GameObject teacherPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/man/source/man/man.obj");
+            GameObject teacherPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Meshy_AI_Open_Armed_Dapper_in__biped/Meshy_AI_Open_Armed_Dapper_in__biped_Animation_Talk_with_Right_Hand_Open_withSkin.fbx");
             if (teacherPrefab != null)
             {
                 teacherGo = Instantiate(teacherPrefab, classroomContainer.transform);
                 teacherGo.name = "Teacher";
                 teacherGo.transform.localPosition = new Vector3(2.2f, 0.0f, 3.8f);
                 teacherGo.transform.localRotation = Quaternion.Euler(0f, 210f, 0f); // Face slightly towards the student
-                teacherGo.transform.localScale = Vector3.one * 0.038f; // Scaled up (approx 1.5x larger)
+                teacherGo.transform.localScale = Vector3.one * 1.8f; // Human scale for biped FBX
 
                 Material teacherMat = new Material(Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard"));
-                Texture2D teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/source/man/textures/00208_Quint009_Diffuse.JPG");
-                if (teacherTex == null)
-                {
-                    teacherTex = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/man/textures/00208_Quint009_Diffuse.jpeg");
-                }
+                Texture2D albedo = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Meshy_AI_Open_Armed_Dapper_in__biped/Meshy_AI_Open_Armed_Dapper_in__biped_texture_0.png");
+                Texture2D normal = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Meshy_AI_Open_Armed_Dapper_in__biped/Meshy_AI_Open_Armed_Dapper_in__biped_texture_0_normal.png");
 
-                if (teacherTex != null)
+                if (albedo != null) teacherMat.mainTexture = albedo;
+                if (normal != null)
                 {
-                    teacherMat.mainTexture = teacherTex;
+                    teacherMat.SetTexture("_BumpMap", normal);
+                    teacherMat.EnableKeyword("_NORMALMAP");
                 }
-                else
-                {
-                    teacherMat.color = new Color(0.8f, 0.7f, 0.6f);
-                }
-                teacherMat.SetFloat("_Smoothness", 0.05f);
+                teacherMat.SetFloat("_Smoothness", 0.3f);
 
                 foreach (var r in teacherGo.GetComponentsInChildren<Renderer>())
                 {
@@ -552,7 +557,8 @@ namespace InfiniteWorld
                 }
                 _teacherRig = teacherGo.AddComponent<TeacherRigController>();
                 _teacherRig.audioSource = _audioSource;
-                Debug.Log("[SpeedLessonManager] Instantiated teacher character model next to the blackboard.");
+                _teacherRig.blackboardTransform = blackboardGo.transform;
+                Debug.Log("[SpeedLessonManager] Instantiated skinned teacher character model next to the blackboard.");
             }
 #endif
 
@@ -636,6 +642,11 @@ namespace InfiniteWorld
             Destroy(chalk.GetComponent<Collider>());
             chalk.SetActive(false);
 
+            if (_teacherRig != null)
+            {
+                _teacherRig.chalkTransform = chalk.transform;
+            }
+
             // Hide steering wheel immediately on first frame
             Transform wheelPivot = null;
             System.Action hideWheelFn = () =>
@@ -691,11 +702,9 @@ namespace InfiniteWorld
                 "<color=white>    4. Speed can change over time.</color>\n" +
                 "<color=white>    5. Speed and velocity are different.</color>";
 
-            // Run writing animation
-            yield return StartCoroutine(AnimateChalkWriting(titleTm, chalk, titleText, blackboardGo));
-            yield return StartCoroutine(AnimateChalkWriting(tm, chalk, bodyText, blackboardGo));
+            _skipClassroom = false;
 
-            // Create and instantiate DEMO GAME button below the board
+            // Create and instantiate DEMO GAME button below the board immediately so players can skip the classroom lesson at any time
             var demoBtnGo = new GameObject("DemoGameBtn");
             demoBtnGo.transform.SetParent(classroomContainer.transform, false);
             demoBtnGo.transform.localPosition = new Vector3(0f, 0.9f, 3.4f);
@@ -704,20 +713,24 @@ namespace InfiniteWorld
             var btn = demoBtnGo.AddComponent<HolographicButton>();
             btn.width = 1.8f;
             btn.height = 0.35f;
-            btn.buttonText = "DEMO GAME";
+            btn.buttonText = "DEMO GAME (SPACE)";
             btn.textColor = NeonOrange;
+            btn.OnClick = () => { _skipClassroom = true; };
 
-            bool demoClicked = false;
-            btn.OnClick = () => { demoClicked = true; };
+            // Run writing animation (unless skipped)
+            if (!_skipClassroom) yield return StartCoroutine(AnimateChalkWriting(titleTm, chalk, titleText, blackboardGo));
+            if (!_skipClassroom) yield return StartCoroutine(AnimateChalkWriting(tm, chalk, bodyText, blackboardGo));
 
-            while (!demoClicked)
+            // Wait until the user clicks DEMO GAME or presses Space
+            while (!_skipClassroom)
             {
-                var kb = UnityEngine.InputSystem.Keyboard.current;
-                if (kb != null)
-                {
-                    try { if (kb.spaceKey.wasPressedThisFrame) demoClicked = true; } catch { }
-                }
                 yield return null;
+            }
+
+            // Stop any voiceovers currently playing
+            if (_audioSource != null)
+            {
+                _audioSource.Stop();
             }
 
             // Restore steering wheel when transitioning to demo game
@@ -855,6 +868,7 @@ namespace InfiniteWorld
 
             for (int i = 0; i < rawLines.Length; i++)
             {
+                if (_skipClassroom) yield break;
                 string line = rawLines[i];
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
@@ -907,12 +921,15 @@ namespace InfiniteWorld
 
             foreach (var section in sections)
             {
+                if (_skipClassroom) yield break;
+
                 // Wait for the previous section's voiceover to finish playing before starting the next section (with safety timeout)
                 if (_audioSource != null && Time.time < _voiceoverEndTime)
                 {
                     chalk.SetActive(false);
                     while (_audioSource.isPlaying && Time.time < _voiceoverEndTime)
                     {
+                        if (_skipClassroom) yield break;
                         yield return null;
                     }
                     chalk.SetActive(true);
@@ -936,6 +953,7 @@ namespace InfiniteWorld
                 // 3. Write each line of the section
                 for (int l = 0; l < sectionLines.Count; l++)
                 {
+                    if (_skipClassroom) yield break;
                     string richLine = sectionLines[l];
                     string plainLine = StripHtmlTags(richLine);
 
@@ -946,7 +964,16 @@ namespace InfiniteWorld
                     if (currentLineY < bottomLimitY && linesWrittenOnCurrentScreen > 0)
                     {
                         chalk.SetActive(false);
-                        yield return new WaitForSeconds(2.5f); // Let student read before clearing
+                        
+                        // Check skip during the 2.5s wait
+                        float waitTimer = 2.5f;
+                        while (waitTimer > 0f)
+                        {
+                            if (_skipClassroom) yield break;
+                            waitTimer -= Time.deltaTime;
+                            yield return null;
+                        }
+                        
                         tm.text = "";
                         currentScreenRichText = "";
                         currentScreenVisibleChars = 0;
@@ -977,6 +1004,7 @@ namespace InfiniteWorld
                     int charsPerFrame = 8;
                     for (int c = 0; c < plainLine.Length; c += charsPerFrame)
                     {
+                        if (_skipClassroom) yield break;
                         int charsToWrite = Mathf.Min(charsPerFrame, plainLine.Length - c);
                         
                         // Move chalk to the position of the character being written
@@ -1135,16 +1163,16 @@ namespace InfiniteWorld
                 txtMat.color = Color.white;
                 titleGo.GetComponent<MeshRenderer>().sharedMaterial = txtMat;
             }
-            titleTm.text = "SPEED";
-            titleTm.fontSize = 96;
-            titleTm.fontStyle = FontStyle.BoldAndItalic;
+            titleTm.text = "";
+            titleTm.fontSize = 150; // Even bigger and bolder!
+            titleTm.fontStyle = FontStyle.Bold;
             titleTm.anchor = TextAnchor.MiddleCenter;
             titleTm.alignment = TextAlignment.Center;
             titleTm.color = NeonOrange;
 
             var subGo = new GameObject("SpeedSub");
             subGo.transform.SetParent(speedSplash.transform, false);
-            subGo.transform.localPosition = new Vector3(0f, -0.15f, -0.02f);
+            subGo.transform.localPosition = new Vector3(0f, -0.18f, -0.02f); // Shifted down to prevent overlap
             subGo.transform.localScale = Vector3.one * 0.007f;
 
             var subTm = subGo.AddComponent<TextMesh>();
@@ -1156,25 +1184,34 @@ namespace InfiniteWorld
                 txtMat.color = Color.white;
                 subGo.GetComponent<MeshRenderer>().sharedMaterial = txtMat;
             }
-            subTm.text = "PHYSICAL SPEED SIMULATION";
-            subTm.fontSize = 28;
+            subTm.text = "";
+            subTm.fontSize = 48; // Even bigger and bolder!
             subTm.fontStyle = FontStyle.Bold;
             subTm.anchor = TextAnchor.MiddleCenter;
             subTm.alignment = TextAlignment.Center;
             subTm.color = NeonCyan;
 
-            // Animation loop: Scale in smoothly
-            float animDuration = 0.6f;
-            float elapsed = 0f;
-            while (elapsed < animDuration)
+            // Set the splash board scale immediately to its final massive size
+            float baseScale = 2.2f;
+            speedSplash.transform.localScale = Vector3.one * baseScale;
+
+            // Typewrite the main title letter-by-letter
+            string mainTitle = "SPEED";
+            for (int i = 1; i <= mainTitle.Length; i++)
             {
-                elapsed += Time.deltaTime;
-                float t = elapsed / animDuration;
-                float scale = Mathf.Sin(t * Mathf.PI * 0.5f) * 1.3f;
-                speedSplash.transform.localScale = Vector3.one * scale;
-                yield return null;
+                titleTm.text = mainTitle.Substring(0, i);
+                yield return new WaitForSeconds(0.12f);
             }
-            speedSplash.transform.localScale = Vector3.one * 1.3f;
+
+            yield return new WaitForSeconds(0.15f);
+
+            // Typewrite the subtitle letter-by-letter
+            string subtitleText = "PHYSICAL SPEED SIMULATION";
+            for (int i = 1; i <= subtitleText.Length; i++)
+            {
+                subTm.text = subtitleText.Substring(0, i);
+                yield return new WaitForSeconds(0.04f);
+            }
 
             // Pulsing effect while waiting (1.8 seconds or spacebar press)
             float waitDuration = 1.8f;
@@ -1183,7 +1220,7 @@ namespace InfiniteWorld
             while (waitElapsed < waitDuration && !skipPressed)
             {
                 waitElapsed += Time.deltaTime;
-                float pulse = 1.3f + Mathf.Sin(Time.time * 6f) * 0.03f;
+                float pulse = baseScale + Mathf.Sin(Time.time * 6f) * 0.05f; // Pulsing relative to baseScale
                 speedSplash.transform.localScale = Vector3.one * pulse;
 
                 var kb = UnityEngine.InputSystem.Keyboard.current;
@@ -1195,7 +1232,7 @@ namespace InfiniteWorld
             }
 
             // Scale out smoothly
-            elapsed = 0f;
+            float elapsed = 0f;
             float fadeDuration = 0.25f;
             Vector3 finalScale = speedSplash.transform.localScale;
             while (elapsed < fadeDuration)

@@ -529,12 +529,13 @@ namespace InfiniteWorld
                 float yawDelta     = _steerInput * carYawRate * dt;
                 _car.Rotate(Vector3.up, yawDelta, Space.World);
 
-                _car.position = Vector3.Lerp(_car.position, roadPos, dt * 8f);
+                // Frame-rate independent exponential decay: tightly follows roadPos to eliminate lag/delay completely
+                _car.position = Vector3.Lerp(_car.position, roadPos, 1f - Mathf.Exp(-35f * dt));
 
                 if (!_rmbHeld && _speedKmh > 0.5f)
                 {
                     Quaternion target = Quaternion.LookRotation(roadTan, Vector3.up);
-                    _car.rotation = Quaternion.Slerp(_car.rotation, target, dt * 4f);
+                    _car.rotation = Quaternion.Slerp(_car.rotation, target, 1f - Mathf.Exp(-15f * dt));
                     _yaw = _car.eulerAngles.y;
                 }
             }
@@ -577,7 +578,7 @@ namespace InfiniteWorld
 
             pos.y = instant
                 ? targetY
-                : Mathf.Lerp(pos.y, targetY, Time.deltaTime * 14f);
+                : Mathf.Lerp(pos.y, targetY, 1f - Mathf.Exp(-30f * Time.deltaTime));
 
             _car.position = pos;
         }
@@ -590,7 +591,7 @@ namespace InfiniteWorld
 
             // Smooth steering wheel angle
             float targetAngle = _steerInput * maxSteeringAngle;
-            _wheelAngle = Mathf.Lerp(_wheelAngle, targetAngle, Time.deltaTime * steerSpeed);
+            _wheelAngle = Mathf.Lerp(_wheelAngle, targetAngle, 1f - Mathf.Exp(-steerSpeed * Time.deltaTime));
 
             // Apply base rotation from VRCockpitBuilder (-90f, 0f, -180f) and steer rotation around the local Y axis
             _steeringWheelPivot.localRotation =
@@ -606,7 +607,7 @@ namespace InfiniteWorld
                 _accelPedalPivot.localRotation = Quaternion.Lerp(
                     _accelPedalPivot.localRotation,
                     Quaternion.Euler(target, 0f, 0f),
-                    Time.deltaTime * 12f);
+                    1f - Mathf.Exp(-12f * Time.deltaTime));
             }
 
             // Brake: similar
@@ -616,7 +617,7 @@ namespace InfiniteWorld
                 _brakePedalPivot.localRotation = Quaternion.Lerp(
                     _brakePedalPivot.localRotation,
                     Quaternion.Euler(target, 0f, 0f),
-                    Time.deltaTime * 12f);
+                    1f - Mathf.Exp(-12f * Time.deltaTime));
             }
         }
 

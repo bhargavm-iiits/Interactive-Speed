@@ -44,11 +44,11 @@ namespace InfiniteWorld
         [Tooltip("Oak tree prefab from ALP_Assets/Big Oak Tree FREE/Prefabs.")]
         public GameObject oakTreePrefab;
         [Tooltip("Total number of forest clusters.")]
-        public int   forestClusters  = 60;
+        public int   forestClusters  = 30;
         [Tooltip("Min trees per cluster.")]
-        public int   clusterMin      = 20;
+        public int   clusterMin      = 8;
         [Tooltip("Max trees per cluster.")]
-        public int   clusterMax      = 35;
+        public int   clusterMax      = 15;
         [Tooltip("Cluster spread radius in metres.")]
         public float clusterRadius   = 40f;
         [Tooltip("Min distance from road centre to start planting.")]
@@ -88,7 +88,7 @@ namespace InfiniteWorld
 
         [Header("Optimisation")]
         [Tooltip("Maximum distance from the camera at which trees are active.")]
-        public float treeVisibleRange = 250f;
+        public float treeVisibleRange = 120f;
 
         // ── Internal state ────────────────────────────────────────────────────
         private List<GameObject> _plantedTrees = new List<GameObject>();
@@ -684,6 +684,27 @@ namespace InfiniteWorld
                         // NOTE: NOT marked isStatic — physics requires dynamic objects
                         tree.transform.localScale = Vector3.one * scl;
 
+                        // Optimize shadows: leaves are high-poly and don't need to cast/receive shadows in VR. Keep it only for trunk.
+                        foreach (var r in tree.GetComponentsInChildren<Renderer>(true))
+                        {
+                            if (r != null)
+                            {
+                                string mname = r.sharedMaterial != null ? r.sharedMaterial.name.ToLowerInvariant() : "";
+                                string rname = r.gameObject.name.ToLowerInvariant();
+                                bool isLeaf = mname.Contains("branch") || mname.Contains("leaf") || rname.Contains("branch") || rname.Contains("leaf") || mname.Contains("billboard") || rname.Contains("billboard");
+                                if (isLeaf)
+                                {
+                                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                                    r.receiveShadows = false;
+                                }
+                                else
+                                {
+                                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                                    r.receiveShadows = true;
+                                }
+                            }
+                        }
+
                         // ── Physics setup ──────────────────────────────────
                         // Add a trunk CapsuleCollider on the root (scaled for this tree)
                         var capsule = tree.GetComponent<CapsuleCollider>();
@@ -775,6 +796,27 @@ namespace InfiniteWorld
                         tree.name = "Oak";
                         tree.tag  = "Tree";
                         tree.transform.localScale = Vector3.one * scl;
+
+                        // Optimize shadows: leaves are high-poly and don't need to cast/receive shadows in VR. Keep it only for trunk.
+                        foreach (var r in tree.GetComponentsInChildren<Renderer>(true))
+                        {
+                            if (r != null)
+                            {
+                                string mname = r.sharedMaterial != null ? r.sharedMaterial.name.ToLowerInvariant() : "";
+                                string rname = r.gameObject.name.ToLowerInvariant();
+                                bool isLeaf = mname.Contains("branch") || mname.Contains("leaf") || rname.Contains("branch") || rname.Contains("leaf") || mname.Contains("billboard") || rname.Contains("billboard");
+                                if (isLeaf)
+                                {
+                                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                                    r.receiveShadows = false;
+                                }
+                                else
+                                {
+                                    r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+                                    r.receiveShadows = true;
+                                }
+                            }
+                        }
 
                         var capsule = tree.GetComponent<CapsuleCollider>();
                         if (capsule == null) capsule = tree.AddComponent<CapsuleCollider>();
